@@ -7,7 +7,11 @@
     <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="/generate.css" />
     <!-- Environment variables (user should rename env.example.js to env.js) -->
+    <!-- Supabase client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
     <script src="/env.js" defer></script>
+    <!-- ImageTracer for client-side SVG vectorization -->
+    <script src="https://cdn.jsdelivr.net/npm/imagetracerjs@1.2.6/imagetracer_v1.2.6.js"></script>
     <!-- Image generation script -->
     <script src="/generate.js" defer></script>
   </head>
@@ -16,6 +20,7 @@
       <nav class="app-nav">
         <a href="/" class="nav-link">Icon Search</a>
         <a href="/generate.html" class="nav-link active">Image Generator</a>
+        <a href="/generated.html" class="nav-link">Generated Icons</a>
       </nav>
       
       <header>
@@ -49,7 +54,7 @@
             </div>
             <div class="field">
               <label for="backgroundInput">Background</label>
-              <input id="backgroundInput" type="text" placeholder="transparent (default)" value="transparent" />
+              <input id="backgroundInput" type="text" placeholder="white (default)" value="white" />
             </div>
           </div>
 
@@ -73,8 +78,15 @@
           <div id="imageResult" class="image-result"></div>
           <div class="image-actions">
             <button id="downloadBtn" class="download-btn">Download Image</button>
+            <button id="convertSvgBtn" class="convert-btn">Convert to SVG</button>
+            <button id="downloadSvgBtn" class="download-btn hidden">Download SVG</button>
             <button id="regenerateBtn" class="regenerate-btn">Generate Another</button>
           </div>
+        </div>
+
+        <div id="svgSection" class="result-section hidden">
+          <h3>Vectorized SVG</h3>
+          <div id="svgResult" class="svg-result"></div>
         </div>
         
         <div id="errorSection" class="error-section hidden">

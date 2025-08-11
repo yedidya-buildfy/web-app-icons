@@ -7,9 +7,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const loadingSpinner = document.getElementById('loadingSpinner');
   const resultSection = document.getElementById('resultSection');
   const imageResult = document.getElementById('imageResult');
+  const svgSection = document.getElementById('svgSection');
+  const svgResult = document.getElementById('svgResult');
   const errorSection = document.getElementById('errorSection');
   const errorMessage = document.getElementById('errorMessage');
   const downloadBtn = document.getElementById('downloadBtn');
+  const downloadSvgBtn = document.getElementById('downloadSvgBtn');
+  const convertSvgBtn = document.getElementById('convertSvgBtn');
   const regenerateBtn = document.getElementById('regenerateBtn');
 
   // New prompt builder fields
@@ -18,6 +22,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const colorsInput = document.getElementById('colorsInput');
   const backgroundInput = document.getElementById('backgroundInput');
   const promptPreview = document.getElementById('promptPreview');
+
+  let lastImageURL = null;
+  let lastSVGText = null;
+  let supabaseClient = null;
 
   // Check if API key is available
   function checkAPIKey() {
@@ -35,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const colors = (colorsInput?.value || 'black and white').trim();
     const background = (backgroundInput?.value || 'white').trim();
 
-    const prompt = `Design a simple, flat, minimalist icon of a ${subject} ${style} style, ${colors} colors, ${background} background, evenly spaced elements. Maintain geometric balance and consistent stroke width.`;
+    const prompt = `Design a simple, flat, minimalist icon of a ${subject} ${style} style, ${colors} colors, ${background} background, evenly spaced elements. Maintain geometric balance and consistent stroke width, no text, only icon.`;
 
     if (promptPreview) promptPreview.textContent = prompt;
     if (promptInput) promptInput.value = prompt; // keep hidden textarea in sync
@@ -44,6 +52,94 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize preview
   buildPrompt();
+
+  // Initialize Supabase if env variables exist
+  if (typeof SUPABASE_URL !== 'undefined' && typeof SUPABASE_ANON_KEY !== 'undefined') {
+    try {
+      supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } catch (e) {
+      console.warn('Failed to initialize Supabase:', e);
+      supabaseClient = null;
+    }
+  }
+
+  function normalize(str) {
+    return (str || '').toString().trim();
+  }
+
+  function buildIconName({ subject, style, colors, background }) {
+    return `${normalize(subject)} ${normalize(style)}${normalize(colors)}${normalize(background)}`.replace(/\s+/g, ' ').trim();
+  }
+
+  async function computeStableHash(input) {
+    const enc = new TextEncoder();
+    const data = enc.encode(input);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    const bytes = Array.from(new Uint8Array(digest));
+    return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  let isFlushingQueue = false;
+
+  async function saveGeneratedIcon({ imageURL, promptParts }) {
+    if (!supabaseClient) return;
+
+    const payload = {
+      subject: normalize(promptParts.subject),
+      style: normalize(promptParts.style),
+      colors: normalize(promptParts.colors),
+      background: normalize(promptParts.background),
+      icon_name: buildIconName(promptParts),
+      image_url: imageURL
+    };
+
+    // deterministic id for idempotency
+    const idSource = `${payload.icon_name}|${payload.image_url}`;
+    const deterministic_id = await computeStableHash(idSource);
+
+    const record = { ...payload, deterministic_id };
+
+    // queue for offline/retry
+    const queue = JSON.parse(localStorage.getItem('iconSaveQueue') || '[]');
+    queue.push(record);
+    localStorage.setItem('iconSaveQueue', JSON.stringify(queue));
+
+    // try to flush immediately
+    flushSaveQueue();
+  }
+
+  async function flushSaveQueue() {
+    if (!supabaseClient || isFlushingQueue) return;
+    isFlushingQueue = true;
+    try {
+      let queue = JSON.parse(localStorage.getItem('iconSaveQueue') || '[]');
+      while (queue.length) {
+        const next = queue[0];
+        const { error } = await supabaseClient
+          .from('generated_icons')
+          .upsert(next, { onConflict: 'deterministic_id', ignoreDuplicates: false });
+        if (error) throw error;
+        queue.shift();
+        localStorage.setItem('iconSaveQueue', JSON.stringify(queue));
+      }
+    } catch (e) {
+      // backoff on failure
+      setTimeout(() => {
+        isFlushingQueue = false;
+        flushSaveQueue();
+      }, 2000);
+      return;
+    }
+    isFlushingQueue = false;
+  }
+
+  // retry when connectivity returns
+  window.addEventListener('online', () => {
+    flushSaveQueue();
+  });
+
+  // attempt flush on load (handles previous failures)
+  setTimeout(flushSaveQueue, 0);
 
   // Update preview on change
   [iconSubjectInput, styleSelect, colorsInput, backgroundInput].forEach((el) => {
@@ -111,7 +207,22 @@ document.addEventListener('DOMContentLoaded', () => {
       const result = await tryGenerateWithModel(prompt, model);
       if (result) {
         console.log('✅ Image generation successful!');
+        lastImageURL = result.imageURL;
         displayGeneratedImage(result.imageURL);
+        // Reset SVG section on new image
+        svgSection.classList.add('hidden');
+        svgResult.innerHTML = '';
+        lastSVGText = null;
+        downloadSvgBtn.classList.add('hidden');
+
+        // Persist to Supabase with idempotent upsert
+        const promptParts = {
+          subject: iconSubjectInput?.value || '',
+          style: styleSelect?.value || '',
+          colors: colorsInput?.value || '',
+          background: backgroundInput?.value || ''
+        };
+        saveGeneratedIcon({ imageURL: result.imageURL, promptParts }).catch(() => {});
       }
     } catch (err) {
       console.error('❌ Imagen 4.0 Fast failed with detailed error:');
@@ -202,14 +313,77 @@ document.addEventListener('DOMContentLoaded', () => {
     return result;
   }
 
+  // Vectorize current image to SVG using ImageTracer
+  async function convertToSVG() {
+    try {
+      if (!lastImageURL) {
+        showError('No image to convert. Generate an image first.');
+        return;
+      }
+
+      // Fetch the image via local proxy to avoid CORS
+      const proxiedURL = `/proxy-image?url=${encodeURIComponent(lastImageURL)}`;
+      const imgBlob = await fetch(proxiedURL, { cache: 'no-store' }).then(r => r.blob());
+      const bitmap = await createImageBitmap(imgBlob);
+
+      // Draw into a canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0);
+
+      // Use ImageTracer to vectorize
+      const options = {
+        ltres: 1,        // Error threshold for straight lines
+        qtres: 1,        // Error threshold for quadratic splines
+        pathomit: 8,     // Omit small artifacts
+        colorsampling: 0,// 0: deterministics palette
+        numberofcolors: 2,
+        strokewidth: 2,
+        roundcoords: 1
+      };
+
+      const svgString = ImageTracer.imagedataToSVG(ctx.getImageData(0, 0, canvas.width, canvas.height), options);
+      lastSVGText = svgString;
+
+      // Display SVG
+      svgSection.classList.remove('hidden');
+      svgResult.innerHTML = svgString;
+      downloadSvgBtn.classList.remove('hidden');
+    } catch (err) {
+      console.error('SVG conversion failed:', err);
+      showError('SVG conversion failed. Try another image or adjust options.');
+    }
+  }
+
+  function downloadSVG() {
+    if (!lastSVGText) return;
+    const blob = new Blob([lastSVGText], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `vectorized-${Date.now()}.svg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   // Display generated image
   function displayGeneratedImage(imageURL) {
     imageResult.innerHTML = `<img src="${imageURL}" alt="Generated image" />`;
     resultSection.classList.remove('hidden');
 
     downloadBtn.onclick = () => downloadImage(imageURL);
+    convertSvgBtn.onclick = convertToSVG;
+    downloadSvgBtn.onclick = downloadSVG;
     regenerateBtn.onclick = () => {
       hideResult();
+      svgSection.classList.add('hidden');
+      svgResult.innerHTML = '';
+      lastSVGText = null;
+      downloadSvgBtn.classList.add('hidden');
       iconSubjectInput?.focus();
     };
   }
