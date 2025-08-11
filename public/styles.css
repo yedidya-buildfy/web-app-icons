@@ -102,3 +102,22 @@ header p {
 .icon-actions a.download-link:hover {
   background-color: #1e7e34;
 }
+
+.library-separator {
+  grid-column: 1 / -1;
+  text-align: left;
+  margin-top: 20px;
+  margin-bottom: 10px;
+  font-size: 1.2em;
+  color: #333;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 5px;
+  text-transform: capitalize;
+}
+
+.icon-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 15px;
+    grid-column: 1 / -1;
+}

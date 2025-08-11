@@ -52,59 +52,150 @@ document.addEventListener('DOMContentLoaded', () => {
       resultsDiv.textContent = 'No results found.';
       return;
     }
-    iconIds.forEach((id) => {
-      const [prefix, name] = id.split(':');
-      const card = document.createElement('div');
-      card.className = 'icon-card';
-      // icon display
-      const iconEl = document.createElement('iconify-icon');
-      iconEl.setAttribute('icon', id);
-      iconEl.setAttribute('height', '32');
-      // label
-      const nameEl = document.createElement('div');
-      nameEl.className = 'icon-name';
-      nameEl.textContent = name.replace(/-/g, ' ');
-      // actions container
-      const actions = document.createElement('div');
-      actions.className = 'icon-actions';
-      // copy button
-      const copyBtn = document.createElement('button');
-      copyBtn.className = 'copy-btn';
-      copyBtn.textContent = 'Copy';
-      copyBtn.addEventListener('click', () => {
-        const code = `<iconify-icon icon=\"${id}\"></iconify-icon>`;
-        if (navigator.clipboard) {
-          navigator.clipboard.writeText(code).then(() => {
-            copyBtn.textContent = 'Copied!';
-            setTimeout(() => (copyBtn.textContent = 'Copy'), 1500);
-          }).catch((err) => {
-            console.error('Clipboard error:', err);
-          });
-        } else {
-          // fallback: create temp textarea
-          const textarea = document.createElement('textarea');
-          textarea.value = code;
-          document.body.appendChild(textarea);
-          textarea.select();
-          document.execCommand('copy');
-          document.body.removeChild(textarea);
-        }
-      });
-      // download link
-      const downloadLink = document.createElement('a');
-      downloadLink.className = 'download-link';
-      downloadLink.textContent = 'Download';
-      downloadLink.href = `https://api.iconify.design/${id}.svg?download=1`;
-      downloadLink.setAttribute('download', `${name}.svg`);
-      downloadLink.target = '_blank';
-      actions.appendChild(copyBtn);
-      actions.appendChild(downloadLink);
 
-      card.appendChild(iconEl);
-      card.appendChild(nameEl);
-      card.appendChild(actions);
-      resultsDiv.appendChild(card);
-    });
+    const selectedLib = librarySelect.value;
+
+    if (selectedLib === 'all') {
+      const mainLibraries = Array.from(librarySelect.options)
+        .map(option => option.value)
+        .filter(value => value !== 'all');
+
+      const groupedIcons = iconIds.reduce((acc, id) => {
+        const mainLib = mainLibraries.find(lib => id.startsWith(lib + ':'));
+        const key = mainLib || 'other';
+
+        if (!acc[key]) {
+          acc[key] = [];
+        }
+        acc[key].push(id);
+        return acc;
+      }, {});
+
+      const libraryOrder = [...mainLibraries, 'other'];
+
+      libraryOrder.forEach(prefix => {
+        if (!groupedIcons[prefix]) {
+            return;
+        }
+        const libraryName = prefix.replace(/-/g, ' ');
+        const separator = document.createElement('h2');
+        separator.className = 'library-separator';
+        separator.textContent = libraryName;
+        resultsDiv.appendChild(separator);
+
+        const iconContainer = document.createElement('div');
+        iconContainer.className = 'icon-container';
+        resultsDiv.appendChild(iconContainer);
+
+        groupedIcons[prefix].forEach(id => {
+          const [, name] = id.split(':');
+          const card = document.createElement('div');
+          card.className = 'icon-card';
+          // icon display
+          const iconEl = document.createElement('iconify-icon');
+          iconEl.setAttribute('icon', id);
+          iconEl.setAttribute('height', '32');
+          // label
+          const nameEl = document.createElement('div');
+          nameEl.className = 'icon-name';
+          nameEl.textContent = name.replace(/-/g, ' ');
+          // actions container
+          const actions = document.createElement('div');
+          actions.className = 'icon-actions';
+          // copy button
+          const copyBtn = document.createElement('button');
+          copyBtn.className = 'copy-btn';
+          copyBtn.textContent = 'Copy';
+          copyBtn.addEventListener('click', () => {
+            const code = `<iconify-icon icon="${id}"></iconify-icon>`;
+            if (navigator.clipboard) {
+              navigator.clipboard.writeText(code).then(() => {
+                copyBtn.textContent = 'Copied!';
+                setTimeout(() => (copyBtn.textContent = 'Copy'), 1500);
+              }).catch((err) => {
+                console.error('Clipboard error:', err);
+              });
+            } else {
+              // fallback: create temp textarea
+              const textarea = document.createElement('textarea');
+              textarea.value = code;
+              document.body.appendChild(textarea);
+              textarea.select();
+              document.execCommand('copy');
+              document.body.removeChild(textarea);
+            }
+          });
+          // download link
+          const downloadLink = document.createElement('a');
+          downloadLink.className = 'download-link';
+          downloadLink.textContent = 'Download';
+          downloadLink.href = `https://api.iconify.design/${id}.svg?download=1`;
+          downloadLink.setAttribute('download', `${name}.svg`);
+          downloadLink.target = '_blank';
+          actions.appendChild(copyBtn);
+          actions.appendChild(downloadLink);
+
+          card.appendChild(iconEl);
+          card.appendChild(nameEl);
+          card.appendChild(actions);
+          iconContainer.appendChild(card);
+        });
+      });
+    } else {
+        iconIds.forEach((id) => {
+            const [prefix, name] = id.split(':');
+            const card = document.createElement('div');
+            card.className = 'icon-card';
+            // icon display
+            const iconEl = document.createElement('iconify-icon');
+            iconEl.setAttribute('icon', id);
+            iconEl.setAttribute('height', '32');
+            // label
+            const nameEl = document.createElement('div');
+            nameEl.className = 'icon-name';
+            nameEl.textContent = name.replace(/-/g, ' ');
+            // actions container
+            const actions = document.createElement('div');
+            actions.className = 'icon-actions';
+            // copy button
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'copy-btn';
+            copyBtn.textContent = 'Copy';
+            copyBtn.addEventListener('click', () => {
+                const code = `<iconify-icon icon="${id}"></iconify-icon>`;
+                if (navigator.clipboard) {
+                navigator.clipboard.writeText(code).then(() => {
+                    copyBtn.textContent = 'Copied!';
+                    setTimeout(() => (copyBtn.textContent = 'Copy'), 1500);
+                }).catch((err) => {
+                    console.error('Clipboard error:', err);
+                });
+                } else {
+                // fallback: create temp textarea
+                const textarea = document.createElement('textarea');
+                textarea.value = code;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                }
+            });
+            // download link
+            const downloadLink = document.createElement('a');
+            downloadLink.className = 'download-link';
+            downloadLink.textContent = 'Download';
+            downloadLink.href = `https://api.iconify.design/${id}.svg?download=1`;
+            downloadLink.setAttribute('download', `${name}.svg`);
+            downloadLink.target = '_blank';
+            actions.appendChild(copyBtn);
+            actions.appendChild(downloadLink);
+
+            card.appendChild(iconEl);
+            card.appendChild(nameEl);
+            card.appendChild(actions);
+            resultsDiv.appendChild(card);
+        });
+    }
   }
 
   searchInput.addEventListener('input', (e) => {
