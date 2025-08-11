@@ -1,0 +1,21 @@
+{
+  "name": "icon-search-image-generator",
+  "version": "1.0.0",
+  "description": "A web app for searching icons and generating AI images using Runware.ai",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "icon-search",
+    "ai-image-generation",
+    "runware",
+    "web-app"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

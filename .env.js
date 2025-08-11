@@ -1,5 +1,5 @@
 # Supabase configuration
 SUPABASE_URL=https://kfeekskddfyyosyyplxd.supabase.co
 SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtmZWVrc2tkZGZ5eW9zeXlwbHhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ5MzkwOTAsImV4cCI6MjA3MDUxNTA5MH0.rgGBDVUIDEi31pZhXbzJAJCu7cmebMWEfEdvDnE-tCU
-
+RUNWARE_API_KEY=GlESRucs5fiKPV8wifrPqLwNeQcxBwqn
 # Note: Copy this file to `.env` and fill in your actual Supabase project URL and anon key.

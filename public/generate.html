@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image Generator - Icon Search App</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/generate.css" />
+    <!-- Environment variables (user should rename env.example.js to env.js) -->
+    <script src="/env.js" defer></script>
+    <!-- Image generation script -->
+    <script src="/generate.js" defer></script>
+  </head>
+  <body>
+    <main class="container">
+      <nav class="app-nav">
+        <a href="/" class="nav-link">Icon Search</a>
+        <a href="/generate.html" class="nav-link active">Image Generator</a>
+      </nav>
+      
+      <header>
+        <h1>AI Image Generator</h1>
+        <p>Generate images using Google's Imagen 4.0 Fast model via Runware.ai</p>
+      </header>
+      
+      <div class="generator-container">
+        <div class="input-section">
+          <label for="promptInput">Describe the image you want to generate:</label>
+          <textarea 
+            id="promptInput" 
+            placeholder="Enter a detailed description of the image you want to generate..."
+            rows="3"
+          ></textarea>
+          
+          <div class="generation-controls">
+            <button id="generateBtn" class="generate-btn">Generate Image</button>
+            <button id="searchModelsBtn" class="search-models-btn">Search Models (Debug)</button>
+            <div id="loadingSpinner" class="loading-spinner hidden"></div>
+          </div>
+        </div>
+        
+        <div id="resultSection" class="result-section hidden">
+          <h3>Generated Image</h3>
+          <div id="imageResult" class="image-result"></div>
+          <div class="image-actions">
+            <button id="downloadBtn" class="download-btn">Download Image</button>
+            <button id="regenerateBtn" class="regenerate-btn">Generate Another</button>
+          </div>
+        </div>
+        
+        <div id="errorSection" class="error-section hidden">
+          <h3>Error</h3>
+          <p id="errorMessage"></p>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>
