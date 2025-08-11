@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // New prompt builder fields
   const iconSubjectInput = document.getElementById('iconSubjectInput');
+  const contextInput = document.getElementById('contextInput');
   const styleSelect = document.getElementById('styleSelect');
   const colorsInput = document.getElementById('colorsInput');
   const backgroundInput = document.getElementById('backgroundInput');
@@ -39,11 +40,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // Build structured prompt
   function buildPrompt() {
     const subject = (iconSubjectInput?.value || '').trim() || 'generic icon';
+    const context = (contextInput?.value || '').trim();
     const style = (styleSelect?.value || 'outline').trim();
     const colors = (colorsInput?.value || 'black and white').trim();
     const background = (backgroundInput?.value || 'white').trim();
 
-    const prompt = `Design a simple, flat, minimalist icon of a ${subject} ${style} style, ${colors} colors, ${background} background, evenly spaced elements. Maintain geometric balance and consistent stroke width, no text, only icon.`;
+    const contextPart = context ? ` for ${context}` : '';
+    const prompt = `Design a simple, flat, minimalist icon of a ${subject}${contextPart} ${style} style, ${colors} colors, ${background} background, evenly spaced elements. Maintain geometric balance and consistent stroke width, no text, only icon.`;
 
     if (promptPreview) promptPreview.textContent = prompt;
     if (promptInput) promptInput.value = prompt; // keep hidden textarea in sync
@@ -63,12 +66,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function normalize(str) {
-    return (str || '').toString().trim();
-  }
+  function normalize(str) { return (str || '').toString().trim(); }
 
-  function buildIconName({ subject, style, colors, background }) {
-    return `${normalize(subject)} ${normalize(style)}${normalize(colors)}${normalize(background)}`.replace(/\s+/g, ' ').trim();
+  function buildIconName({ subject, context, style, colors, background }) {
+    return `${normalize(subject)} ${normalize(context)} ${normalize(style)} ${normalize(colors)} ${normalize(background)}`
+      .replace(/\s+/g, ' ') 
+      .trim();
   }
 
   async function computeStableHash(input) {
@@ -86,6 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const payload = {
       subject: normalize(promptParts.subject),
+      context: normalize(promptParts.context),
       style: normalize(promptParts.style),
       colors: normalize(promptParts.colors),
       background: normalize(promptParts.background),
@@ -123,26 +127,18 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('iconSaveQueue', JSON.stringify(queue));
       }
     } catch (e) {
-      // backoff on failure
-      setTimeout(() => {
-        isFlushingQueue = false;
-        flushSaveQueue();
-      }, 2000);
+      setTimeout(() => { isFlushingQueue = false; flushSaveQueue(); }, 2000);
       return;
     }
     isFlushingQueue = false;
   }
 
   // retry when connectivity returns
-  window.addEventListener('online', () => {
-    flushSaveQueue();
-  });
-
-  // attempt flush on load (handles previous failures)
+  window.addEventListener('online', () => { flushSaveQueue(); });
   setTimeout(flushSaveQueue, 0);
 
   // Update preview on change
-  [iconSubjectInput, styleSelect, colorsInput, backgroundInput].forEach((el) => {
+  [iconSubjectInput, contextInput, styleSelect, colorsInput, backgroundInput].forEach((el) => {
     if (el) el.addEventListener('input', buildPrompt);
     if (el && el.tagName === 'SELECT') el.addEventListener('change', buildPrompt);
   });
@@ -188,36 +184,19 @@ document.addEventListener('DOMContentLoaded', () => {
   // Generate image using only Imagen 4.0 Fast
   async function generateImage() {
     if (!checkAPIKey()) return;
-
     const prompt = buildPrompt().trim();
-    if (!prompt) {
-      showError('Please enter a description for the image.');
-      return;
-    }
-
-    setLoadingState(true);
-    hideError();
-    hideResult();
-
-    const model = 'google:2@3'; // Imagen 4.0 Fast only
-    console.log(`🎯 Using Imagen 4.0 Fast model: ${model}`);
-    console.log(`📝 Prompt: "${prompt}"`);
-
+    if (!prompt) { showError('Please enter a description for the image.'); return; }
+    setLoadingState(true); hideError(); hideResult();
+    const model = 'google:2@3';
     try {
       const result = await tryGenerateWithModel(prompt, model);
       if (result) {
-        console.log('✅ Image generation successful!');
         lastImageURL = result.imageURL;
         displayGeneratedImage(result.imageURL);
-        // Reset SVG section on new image
-        svgSection.classList.add('hidden');
-        svgResult.innerHTML = '';
-        lastSVGText = null;
-        downloadSvgBtn.classList.add('hidden');
-
-        // Persist to Supabase with idempotent upsert
+        svgSection.classList.add('hidden'); svgResult.innerHTML=''; lastSVGText=null; downloadSvgBtn.classList.add('hidden');
         const promptParts = {
           subject: iconSubjectInput?.value || '',
+          context: contextInput?.value || '',
           style: styleSelect?.value || '',
           colors: colorsInput?.value || '',
           background: backgroundInput?.value || ''
@@ -225,19 +204,9 @@ document.addEventListener('DOMContentLoaded', () => {
         saveGeneratedIcon({ imageURL: result.imageURL, promptParts }).catch(() => {});
       }
     } catch (err) {
-      console.error('❌ Imagen 4.0 Fast failed with detailed error:');
-      console.error('Error name:', err.name);
-      console.error('Error message:', err.message);
-      console.error('Full error object:', err);
-      
-      if (err.name === 'AbortError') {
-        showError('Request timed out. Please try again.');
-      } else {
-        showError(`Imagen 4.0 Fast failed: ${err.message || 'Unknown error'}`);
-      }
-    } finally {
-      setLoadingState(false);
-    }
+      if (err.name === 'AbortError') showError('Request timed out. Please try again.');
+      else showError(`Imagen 4.0 Fast failed: ${err.message || 'Unknown error'}`);
+    } finally { setLoadingState(false); }
   }
 
   // Try generating with a specific model
@@ -316,133 +285,56 @@ document.addEventListener('DOMContentLoaded', () => {
   // Vectorize current image to SVG using ImageTracer
   async function convertToSVG() {
     try {
-      if (!lastImageURL) {
-        showError('No image to convert. Generate an image first.');
-        return;
-      }
-
-      // Fetch the image via local proxy to avoid CORS
+      if (!lastImageURL) { showError('No image to convert. Generate an image first.'); return; }
       const proxiedURL = `/proxy-image?url=${encodeURIComponent(lastImageURL)}`;
-      const imgBlob = await fetch(proxiedURL, { cache: 'no-store' }).then(r => r.blob());
-      const bitmap = await createImageBitmap(imgBlob);
-
-      // Draw into a canvas
-      const canvas = document.createElement('canvas');
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(bitmap, 0, 0);
-
-      // Use ImageTracer to vectorize
-      const options = {
-        ltres: 1,        // Error threshold for straight lines
-        qtres: 1,        // Error threshold for quadratic splines
-        pathomit: 8,     // Omit small artifacts
-        colorsampling: 0,// 0: deterministics palette
-        numberofcolors: 2,
-        strokewidth: 2,
-        roundcoords: 1
-      };
-
+      const resp = await fetch(proxiedURL, { cache: 'no-store' });
+      if (!resp.ok) { console.error('Proxy fetch failed with status:', resp.status); showError('Could not fetch image via proxy (did you restart the server?).'); return; }
+      const imgBlob = await resp.blob();
+      let bitmap = null;
+      try { bitmap = await createImageBitmap(imgBlob); }
+      catch (e) {
+        const objectUrl = URL.createObjectURL(imgBlob);
+        bitmap = await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => { try { const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0); URL.revokeObjectURL(objectUrl); resolve({ width: img.width, height: img.height, _canvas: canvas, _ctx: ctx }); } catch (err) { reject(err); } };
+          img.onerror = reject;
+          img.src = objectUrl;
+        });
+      }
+      let canvas, ctx;
+      if (bitmap._canvas) { canvas = bitmap._canvas; ctx = bitmap._ctx; }
+      else { canvas = document.createElement('canvas'); canvas.width = bitmap.width; canvas.height = bitmap.height; ctx = canvas.getContext('2d'); ctx.drawImage(bitmap, 0, 0); }
+      const options = { ltres: 1, qtres: 1, pathomit: 8, colorsampling: 0, numberofcolors: 2, strokewidth: 2, roundcoords: 1 };
       const svgString = ImageTracer.imagedataToSVG(ctx.getImageData(0, 0, canvas.width, canvas.height), options);
       lastSVGText = svgString;
-
-      // Display SVG
       svgSection.classList.remove('hidden');
       svgResult.innerHTML = svgString;
       downloadSvgBtn.classList.remove('hidden');
     } catch (err) {
-      console.error('SVG conversion failed:', err);
-      showError('SVG conversion failed. Try another image or adjust options.');
+      console.error('SVG conversion failed:', err); showError('SVG conversion failed. If the server was updated, restart it and try again.');
     }
   }
 
   function downloadSVG() {
-    if (!lastSVGText) return;
-    const blob = new Blob([lastSVGText], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `vectorized-${Date.now()}.svg`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    if (!lastSVGText) return; const blob = new Blob([lastSVGText], { type: 'image/svg+xml' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `vectorized-${Date.now()}.svg`; document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
   }
 
   // Display generated image
   function displayGeneratedImage(imageURL) {
     imageResult.innerHTML = `<img src="${imageURL}" alt="Generated image" />`;
     resultSection.classList.remove('hidden');
-
-    downloadBtn.onclick = () => downloadImage(imageURL);
-    convertSvgBtn.onclick = convertToSVG;
-    downloadSvgBtn.onclick = downloadSVG;
-    regenerateBtn.onclick = () => {
-      hideResult();
-      svgSection.classList.add('hidden');
-      svgResult.innerHTML = '';
-      lastSVGText = null;
-      downloadSvgBtn.classList.add('hidden');
-      iconSubjectInput?.focus();
-    };
+    downloadBtn.onclick = () => downloadImage(imageURL); convertSvgBtn.onclick = convertToSVG; downloadSvgBtn.onclick = downloadSVG; regenerateBtn.onclick = () => { hideResult(); svgSection.classList.add('hidden'); svgResult.innerHTML=''; lastSVGText=null; downloadSvgBtn.classList.add('hidden'); iconSubjectInput?.focus(); };
   }
 
-  // Download image
-  function downloadImage(imageURL) {
-    const link = document.createElement('a');
-    link.href = imageURL;
-    link.download = `generated-image-${Date.now()}.jpg`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }
+  function downloadImage(imageURL) { const link = document.createElement('a'); link.href = imageURL; link.download = `generated-image-${Date.now()}.jpg`; document.body.appendChild(link); link.click(); document.body.removeChild(link); }
 
-  // Generate UUID for task identification
-  function generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  }
+  function generateUUID() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { const r = Math.random() * 16 | 0; const v = c === 'x' ? r : (r & 0x3 | 0x8); return v.toString(16); }); }
 
-  // UI helpers
-  function setLoadingState(loading) {
-    if (loading) {
-      generateBtn.disabled = true;
-      generateBtn.textContent = 'Generating...';
-      loadingSpinner.classList.remove('hidden');
-    } else {
-      generateBtn.disabled = false;
-      generateBtn.textContent = 'Generate Image';
-      loadingSpinner.classList.add('hidden');
-    }
-  }
+  function setLoadingState(loading) { if (loading) { generateBtn.disabled = true; generateBtn.textContent = 'Generating...'; loadingSpinner.classList.remove('hidden'); } else { generateBtn.disabled = false; generateBtn.textContent = 'Generate Image'; loadingSpinner.classList.add('hidden'); } }
+  function showError(message) { errorMessage.textContent = message; errorSection.classList.remove('hidden'); }
+  function hideError() { errorSection.classList.add('hidden'); }
+  function hideResult() { resultSection.classList.add('hidden'); }
 
-  function showError(message) {
-    errorMessage.textContent = message;
-    errorSection.classList.remove('hidden');
-  }
-
-  function hideError() {
-    errorSection.classList.add('hidden');
-  }
-
-  function hideResult() {
-    resultSection.classList.add('hidden');
-  }
-
-  // Events
   generateBtn.addEventListener('click', generateImage);
-  
-  // Add search models button
-  const searchModelsBtn = document.getElementById('searchModelsBtn');
-  if (searchModelsBtn) {
-    searchModelsBtn.addEventListener('click', async () => {
-      if (!checkAPIKey()) return;
-      console.log('Searching for available models...');
-      await searchModels();
-    });
-  }
+  const searchModelsBtn = document.getElementById('searchModelsBtn'); if (searchModelsBtn) { searchModelsBtn.addEventListener('click', async () => { if (!checkAPIKey()) return; console.log('Searching for available models...'); await searchModels(); }); }
 });

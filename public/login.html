@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login - Icon App</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/generate.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+    <script src="/env.js"></script>
+    <script src="/auth.js" defer></script>
+    <style>
+      .auth-card { max-width: 420px; margin: 40px auto; background: #fff; padding: 24px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+      .auth-card h1 { margin-top: 0; }
+      .auth-card .field { margin-bottom: 12px; }
+      .auth-card .field label { font-weight:600; display:block; margin-bottom:6px; }
+      .auth-card input { width: 100%; padding: 10px; border: 2px solid #e1e5e9; border-radius: 6px; }
+      .auth-actions { display:flex; gap:10px; margin-top: 12px; }
+      .btn { padding:10px 14px; border:none; border-radius:6px; color:#fff; cursor:pointer; }
+      .btn.primary { background:#007bff; }
+      .btn.secondary { background:#6c757d; }
+      .auth-links { display:flex; justify-content:space-between; margin-top:10px; font-size:14px; }
+      .error { color: #b00020; margin-top: 10px; }
+      .success { color: #0a7f3f; margin-top: 10px; }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <nav class="app-nav">
+        <a href="/" class="nav-link">Icon Search</a>
+        <a href="/generate.html" class="nav-link">Image Generator</a>
+        <span id="authNav"></span>
+      </nav>
+
+      <div class="auth-card">
+        <h1>Welcome</h1>
+        <p>Login or create an account.</p>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" placeholder="you@example.com" />
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" type="password" placeholder="••••••••" />
+        </div>
+        <div class="auth-actions">
+          <button id="loginBtn" class="btn primary">Login</button>
+          <button id="signupBtn" class="btn secondary">Sign up</button>
+        </div>
+        <div class="auth-actions">
+          <button id="magicLinkBtn" class="btn secondary">Send Magic Link</button>
+        </div>
+        <div class="auth-links">
+          <a href="/reset-password.html">Forgot password?</a>
+        </div>
+        <div id="authMsg" class="success" style="display:none"></div>
+        <div id="authErr" class="error" style="display:none"></div>
+      </div>
+    </main>
+
+    <script>
+      const client = window.supabaseAuthClient || supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      const emailEl = document.getElementById('email');
+      const passEl = document.getElementById('password');
+      const msgEl = document.getElementById('authMsg');
+      const errEl = document.getElementById('authErr');
+
+      function showMsg(t){ msgEl.textContent=t; msgEl.style.display='block'; errEl.style.display='none'; }
+      function showErr(t){ errEl.textContent=t; errEl.style.display='block'; msgEl.style.display='none'; }
+
+      function redirectAfterAuth(){
+        const params = new URLSearchParams(location.search);
+        const redirect = params.get('redirect') || '/generate.html';
+        location.href = redirect;
+      }
+
+      document.getElementById('loginBtn').addEventListener('click', async () => {
+        try {
+          const { error } = await client.auth.signInWithPassword({ email: emailEl.value.trim(), password: passEl.value });
+          if (error) return showErr(error.message);
+          redirectAfterAuth();
+        } catch (e) { showErr('Login failed'); }
+      });
+
+      document.getElementById('signupBtn').addEventListener('click', async () => {
+        try {
+          const { error } = await client.auth.signUp({ email: emailEl.value.trim(), password: passEl.value });
+          if (error) return showErr(error.message);
+          showMsg('Check your email to confirm your account.');
+        } catch (e) { showErr('Sign up failed'); }
+      });
+
+      document.getElementById('magicLinkBtn').addEventListener('click', async () => {
+        try {
+          const { error } = await client.auth.signInWithOtp({ email: emailEl.value.trim(), options: { emailRedirectTo: window.location.origin + '/login.html' } });
+          if (error) return showErr(error.message);
+          showMsg('Magic link sent. Check your email.');
+        } catch (e) { showErr('Could not send magic link'); }
+      });
+    </script>
+  </body>
+</html>

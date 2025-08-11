@@ -11,8 +11,14 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
     <!-- Environment variables (user should rename env.example.js to env.js) -->
     <script src="/env.js" defer></script>
+    <script src="/auth.js" defer></script>
     <!-- Main application script -->
     <script src="/main.js" defer></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        if (window.requireAuth) window.requireAuth();
+      });
+    </script>
   </head>
   <body>
     <main class="container">
@@ -20,6 +26,7 @@
         <a href="/" class="nav-link active">Icon Search</a>
         <a href="/generate.html" class="nav-link">Image Generator</a>
         <a href="/generated.html" class="nav-link">Generated Icons</a>
+        <span id="authNav"></span>
       </nav>
       
       <header>

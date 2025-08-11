@@ -10,10 +10,16 @@
     <!-- Supabase client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
     <script src="/env.js" defer></script>
+    <script src="/auth.js" defer></script>
     <!-- ImageTracer for client-side SVG vectorization -->
     <script src="https://cdn.jsdelivr.net/npm/imagetracerjs@1.2.6/imagetracer_v1.2.6.js"></script>
     <!-- Image generation script -->
     <script src="/generate.js" defer></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        if (window.requireAuth) window.requireAuth();
+      });
+    </script>
   </head>
   <body>
     <main class="container">
@@ -21,6 +27,7 @@
         <a href="/" class="nav-link">Icon Search</a>
         <a href="/generate.html" class="nav-link active">Image Generator</a>
         <a href="/generated.html" class="nav-link">Generated Icons</a>
+        <span id="authNav"></span>
       </nav>
       
       <header>
@@ -36,6 +43,13 @@
               <input id="iconSubjectInput" type="text" placeholder="e.g., dumbbell" />
             </div>
             <div class="field">
+              <label for="contextInput">Context</label>
+              <input id="contextInput" type="text" placeholder="e.g., fitness app toolbar button" />
+            </div>
+          </div>
+
+          <div class="field-grid">
+            <div class="field">
               <label for="styleSelect">Style</label>
               <select id="styleSelect">
                 <option value="outline" selected>Outline (default)</option>
@@ -45,13 +59,13 @@
                 <option value="rounded">Rounded</option>
               </select>
             </div>
-          </div>
-
-          <div class="field-grid">
             <div class="field">
               <label for="colorsInput">Colors</label>
               <input id="colorsInput" type="text" placeholder="black and white (default)" value="black and white" />
             </div>
+          </div>
+
+          <div class="field-grid">
             <div class="field">
               <label for="backgroundInput">Background</label>
               <input id="backgroundInput" type="text" placeholder="white (default)" value="white" />
