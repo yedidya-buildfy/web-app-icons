@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch(url);
       const data = await response.json();
       // data.icons is an array of IDs like 'tabler:home', 'lucide:search'
-      const icons = (data.icons || []).filter((id) => id.startsWith(selectedLib + ':'));
+      const icons = (data.icons || []).filter((id) => selectedLib === 'all' || id.startsWith(selectedLib + ':'));
       renderResults(icons);
       // log search to supabase
       if (supabaseClient) {
