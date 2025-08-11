@@ -1,0 +1,104 @@
+body {
+  font-family: Arial, sans-serif;
+  background-color: #f5f5f5;
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+header h1 {
+  margin-top: 0;
+  text-align: center;
+}
+
+header p {
+  text-align: center;
+  color: #666;
+  margin-bottom: 20px;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+  align-items: center;
+}
+
+.controls select,
+.controls input {
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 15px;
+}
+
+.icon-card {
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  position: relative;
+}
+
+.icon-card iconify-icon {
+  display: block;
+  margin: 0 auto 8px;
+  color: #333;
+  font-size: 32px;
+}
+
+.icon-name {
+  font-size: 12px;
+  color: #333;
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+.icon-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 5px;
+}
+
+.icon-actions button,
+.icon-actions a {
+  flex: 1;
+  padding: 4px 6px;
+  font-size: 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+  color: #fff;
+}
+
+.icon-actions button.copy-btn {
+  background-color: #007bff;
+}
+
+.icon-actions a.download-link {
+  background-color: #28a745;
+}
+
+.icon-actions button.copy-btn:hover {
+  background-color: #0056b3;
+}
+
+.icon-actions a.download-link:hover {
+  background-color: #1e7e34;
+}
