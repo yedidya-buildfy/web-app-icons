@@ -12,6 +12,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const downloadBtn = document.getElementById('downloadBtn');
   const regenerateBtn = document.getElementById('regenerateBtn');
 
+  // New prompt builder fields
+  const iconSubjectInput = document.getElementById('iconSubjectInput');
+  const styleSelect = document.getElementById('styleSelect');
+  const colorsInput = document.getElementById('colorsInput');
+  const backgroundInput = document.getElementById('backgroundInput');
+  const promptPreview = document.getElementById('promptPreview');
+
   // Check if API key is available
   function checkAPIKey() {
     if (typeof RUNWARE_API_KEY === 'undefined' || !RUNWARE_API_KEY) {
@@ -20,6 +27,29 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     return true;
   }
+
+  // Build structured prompt
+  function buildPrompt() {
+    const subject = (iconSubjectInput?.value || '').trim() || 'generic icon';
+    const style = (styleSelect?.value || 'outline').trim();
+    const colors = (colorsInput?.value || 'black and white').trim();
+    const background = (backgroundInput?.value || 'white').trim();
+
+    const prompt = `Design a simple, flat, minimalist icon of a ${subject} ${style} style, ${colors} colors, ${background} background, evenly spaced elements. Maintain geometric balance and consistent stroke width.`;
+
+    if (promptPreview) promptPreview.textContent = prompt;
+    if (promptInput) promptInput.value = prompt; // keep hidden textarea in sync
+    return prompt;
+  }
+
+  // Initialize preview
+  buildPrompt();
+
+  // Update preview on change
+  [iconSubjectInput, styleSelect, colorsInput, backgroundInput].forEach((el) => {
+    if (el) el.addEventListener('input', buildPrompt);
+    if (el && el.tagName === 'SELECT') el.addEventListener('change', buildPrompt);
+  });
 
   // Find available models (for debugging)
   async function searchModels() {
@@ -30,10 +60,12 @@ document.addEventListener('DOMContentLoaded', () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${RUNWARE_API_KEY}`
         },
-        body: JSON.stringify([{
-          taskType: 'modelSearch',
-          taskUUID: generateUUID()
-        }])
+        body: JSON.stringify([
+          {
+            taskType: 'modelSearch',
+            taskUUID: generateUUID()
+          }
+        ])
       });
       const json = await response.json();
       console.log('Available models:', json);
@@ -61,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function generateImage() {
     if (!checkAPIKey()) return;
 
-    const prompt = promptInput.value.trim();
+    const prompt = buildPrompt().trim();
     if (!prompt) {
       showError('Please enter a description for the image.');
       return;
@@ -178,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
     downloadBtn.onclick = () => downloadImage(imageURL);
     regenerateBtn.onclick = () => {
       hideResult();
-      promptInput.focus();
+      iconSubjectInput?.focus();
     };
   }
 
@@ -239,11 +271,4 @@ document.addEventListener('DOMContentLoaded', () => {
       await searchModels();
     });
   }
-  
-  promptInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      generateImage();
-    }
-  });
 });

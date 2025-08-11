@@ -25,12 +25,41 @@
       
       <div class="generator-container">
         <div class="input-section">
-          <label for="promptInput">Describe the image you want to generate:</label>
-          <textarea 
-            id="promptInput" 
-            placeholder="Enter a detailed description of the image you want to generate..."
-            rows="3"
-          ></textarea>
+          <div class="field-grid">
+            <div class="field">
+              <label for="iconSubjectInput">Icon subject</label>
+              <input id="iconSubjectInput" type="text" placeholder="e.g., dumbbell" />
+            </div>
+            <div class="field">
+              <label for="styleSelect">Style</label>
+              <select id="styleSelect">
+                <option value="outline" selected>Outline (default)</option>
+                <option value="filled">Filled</option>
+                <option value="solid">Solid</option>
+                <option value="duotone">Duotone</option>
+                <option value="rounded">Rounded</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-grid">
+            <div class="field">
+              <label for="colorsInput">Colors</label>
+              <input id="colorsInput" type="text" placeholder="black and white (default)" value="black and white" />
+            </div>
+            <div class="field">
+              <label for="backgroundInput">Background</label>
+              <input id="backgroundInput" type="text" placeholder="transparent (default)" value="transparent" />
+            </div>
+          </div>
+
+          <div class="prompt-preview-wrap">
+            <div class="prompt-preview-label">Prompt preview</div>
+            <div id="promptPreview" class="prompt-preview"></div>
+          </div>
+
+          <!-- Keep a hidden textarea for potential manual override later if needed -->
+          <textarea id="promptInput" class="hidden"></textarea>
           
           <div class="generation-controls">
             <button id="generateBtn" class="generate-btn">Generate Image</button>

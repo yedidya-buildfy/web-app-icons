@@ -44,26 +44,55 @@
 
 .input-section label {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   font-weight: 600;
   color: #333;
 }
 
-#promptInput {
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.field input,
+.field select {
   width: 100%;
-  padding: 15px;
+  padding: 12px;
   border: 2px solid #e1e5e9;
   border-radius: 6px;
-  font-size: 16px;
+  font-size: 14px;
   font-family: inherit;
-  resize: vertical;
-  transition: border-color 0.3s ease;
   box-sizing: border-box;
 }
 
-#promptInput:focus {
+.field input:focus,
+.field select:focus {
   outline: none;
   border-color: #007bff;
+}
+
+.prompt-preview-wrap {
+  margin: 10px 0 18px;
+}
+
+.prompt-preview-label {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.prompt-preview {
+  background: #0f172a;
+  color: #e5e7eb;
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid #111827;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .generation-controls {
@@ -217,5 +246,9 @@
   .generation-controls {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .field-grid {
+    grid-template-columns: 1fr;
   }
 }
