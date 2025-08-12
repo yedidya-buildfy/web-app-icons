@@ -19,7 +19,12 @@
     if (!container) return;
     const { data: { session } } = await client.auth.getSession();
     if (session) {
-      container.innerHTML = '<button id="logoutBtn" class="nav-link" style="border:none;background:transparent;cursor:pointer">Logout</button>';
+      const user = session.user;
+      const displayName = user.user_metadata?.full_name || user.email || 'User';
+      container.innerHTML = `
+        <span class="user-info" style="margin-right: 10px;">Hello, ${displayName}</span>
+        <button id="logoutBtn" class="nav-link" style="border:none;background:transparent;cursor:pointer">Logout</button>
+      `;
       const btn = document.getElementById('logoutBtn');
       if (btn) btn.addEventListener('click', async () => {
         await client.auth.signOut();
@@ -47,9 +52,40 @@
     renderAuthNav();
   });
 
+  // OAuth Sign In Functions
+  async function signInWithGoogle() {
+    const { data, error } = await client.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin + '/auth/callback'
+      }
+    });
+    if (error) {
+      console.error('Google OAuth error:', error);
+      throw error;
+    }
+    return data;
+  }
+
+  async function signInWithGitHub() {
+    const { data, error } = await client.auth.signInWithOAuth({
+      provider: 'github',
+      options: {
+        redirectTo: window.location.origin + '/auth/callback'
+      }
+    });
+    if (error) {
+      console.error('GitHub OAuth error:', error);
+      throw error;
+    }
+    return data;
+  }
+
   // Expose helpers
   window.renderAuthNav = renderAuthNav;
   window.requireAuth = requireAuth;
+  window.signInWithGoogle = signInWithGoogle;
+  window.signInWithGitHub = signInWithGitHub;
 
   // Re-render on auth changes
   client.auth.onAuthStateChange((_event, _session) => {

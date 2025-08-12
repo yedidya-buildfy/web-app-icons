@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auth Callback - Icon App</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+    <script src="/env.js"></script>
+    <style>
+        .callback-container {
+            max-width: 480px;
+            margin: 40px auto;
+            text-align: center;
+            padding: 24px;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .error {
+            color: #b00020;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body data-auth-optional="true">
+    <main class="container">
+        <div class="callback-container">
+            <h1>Completing sign-in...</h1>
+            <div class="spinner"></div>
+            <p>Please wait while we complete your authentication.</p>
+            <div id="error" class="error" style="display: none;"></div>
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (typeof supabase === 'undefined' || typeof SUPABASE_URL === 'undefined' || typeof SUPABASE_ANON_KEY === 'undefined') {
+                showError('Authentication configuration not found');
+                return;
+            }
+
+            const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+            function showError(message) {
+                const errorEl = document.getElementById('error');
+                if (errorEl) {
+                    errorEl.textContent = message;
+                    errorEl.style.display = 'block';
+                }
+                document.querySelector('.spinner').style.display = 'none';
+            }
+
+            function getRedirectUrl() {
+                const params = new URLSearchParams(location.search);
+                const state = params.get('state');
+                if (state) {
+                    try {
+                        const stateObj = JSON.parse(decodeURIComponent(state));
+                        if (stateObj.redirect) {
+                            return stateObj.redirect;
+                        }
+                    } catch (e) {
+                        console.warn('Could not parse state parameter:', e);
+                    }
+                }
+                return '/';
+            }
+
+            try {
+                const { data, error } = await client.auth.getSession();
+                
+                if (error) {
+                    console.error('Auth callback error:', error);
+                    showError('Authentication failed: ' + error.message);
+                    return;
+                }
+
+                if (data.session) {
+                    // Successfully authenticated
+                    const redirectUrl = getRedirectUrl();
+                    window.location.href = redirectUrl;
+                } else {
+                    // No session found, redirect to login
+                    showError('No authentication session found');
+                    setTimeout(() => {
+                        window.location.href = '/login.html';
+                    }, 3000);
+                }
+            } catch (err) {
+                console.error('Auth callback error:', err);
+                showError('Authentication failed. Please try again.');
+            }
+        });
+    </script>
+</body>
+</html>

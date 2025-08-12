@@ -21,6 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const signupForm = document.getElementById('signupForm');
   const toLoginBtn = document.getElementById('toLoginBtn');
   const forgotBtn = document.getElementById('forgotBtn');
+  const googleBtn = document.getElementById('googleBtn');
+  const githubBtn = document.getElementById('githubBtn');
 
   if (tabLogin && tabSignup && loginForm && signupForm) {
     tabLogin.addEventListener('click', () => { tabLogin.classList.add('active'); tabSignup.classList.remove('active'); show(loginForm,true); show(signupForm,false); });
@@ -50,6 +52,31 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (forgotBtn) forgotBtn.addEventListener('click', () => { window.location.assign('/reset-password.html'); });
+
+  // OAuth button handlers
+  if (googleBtn) {
+    googleBtn.addEventListener('click', async () => {
+      try {
+        await window.signInWithGoogle();
+      } catch (err) {
+        console.error('Google OAuth failed:', err);
+        const errEl = document.getElementById('loginErr');
+        if (errEl) { errEl.textContent = 'Google sign-in failed. Please try again.'; show(errEl,true); }
+      }
+    });
+  }
+
+  if (githubBtn) {
+    githubBtn.addEventListener('click', async () => {
+      try {
+        await window.signInWithGitHub();
+      } catch (err) {
+        console.error('GitHub OAuth failed:', err);
+        const errEl = document.getElementById('loginErr');
+        if (errEl) { errEl.textContent = 'GitHub sign-in failed. Please try again.'; show(errEl,true); }
+      }
+    });
+  }
 
   if (signupForm) {
     signupForm.addEventListener('submit', async (e) => {
