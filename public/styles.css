@@ -35,6 +35,18 @@ body {
   border: 1px solid #007bff;
 }
 
+.nav-link.admin-only {
+  background-color: #ffeaa7;
+  color: #6c5ce7;
+  border: 1px solid #fdcb6e;
+  font-weight: bold;
+}
+
+.nav-link.admin-only:hover {
+  background-color: #fdcb6e;
+  color: #2d3436;
+}
+
 .container {
   max-width: 960px;
   margin: 0 auto;
