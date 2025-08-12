@@ -11,19 +11,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function normalize(str) { return (str || '').toString().trim(); }
 
+  // Utility functions for clean logging (hide sensitive data)
+  function logInfo(message) { console.log(`ℹ️ ${message}`); }
+  function logSuccess(message) { console.log(`✅ ${message}`); }
+  function logWarning(message) { console.warn(`⚠️ ${message}`); }
+  function logError(message) { console.error(`❌ ${message}`); }
+
   async function fetchIcons() {
-    console.log('=== FETCH ICONS DEBUG ===');
-    console.log('client exists:', !!client);
-    
     if (!client) {
-      console.error('❌ No Supabase client');
-      resultsDiv.textContent = 'Supabase is not configured.';
+      logError('Database not available');
+      resultsDiv.textContent = 'Database is not configured.';
       return [];
     }
 
     try {
-      console.log('📡 Fetching icons from Supabase...');
-      // Query base table; RLS policies allow anonymous reads
+      logInfo('Loading icons...');
       const { data, error } = await client
         .from('generated_icons')
         .select('*')
@@ -31,17 +33,15 @@ document.addEventListener('DOMContentLoaded', () => {
         .limit(500);
         
       if (error) {
-        console.error('❌ Fetch error:', error);
-        console.error('Error details:', error?.message, error?.code, error?.hint);
+        logError('Failed to load icons');
         resultsDiv.textContent = `Failed to load icons: ${error.message}`;
         return [];
       }
       
-      console.log('✅ Successfully fetched icons:', data?.length || 0, 'items');
-      console.log('Icons data:', data);
+      logSuccess(`Loaded ${data?.length || 0} icons`);
       return data || [];
     } catch (err) {
-      console.error('❌ Unexpected fetch error:', err);
+      logError('Network error occurred');
       resultsDiv.textContent = 'Failed to load icons due to network error.';
       return [];
     }
@@ -53,12 +53,27 @@ document.addEventListener('DOMContentLoaded', () => {
     icons.forEach((row) => {
       const card = document.createElement('div'); card.className = 'icon-card';
       const img = document.createElement('img');
-      img.src = `/proxy-image?url=${encodeURIComponent(row.image_url)}`; img.alt = row.icon_name;
+      
+      // Use custom Aicon URL if available, otherwise fallback to proxy
+      const imageUrl = row.custom_id ? `/aicon/${row.custom_id}.jpg` : `/proxy-image?url=${encodeURIComponent(row.image_url)}`;
+      img.src = imageUrl; 
+      img.alt = row.icon_name;
       img.style.maxWidth = '100%'; img.style.height = 'auto'; img.style.aspectRatio = '1'; img.style.objectFit = 'contain';
+      
       const nameEl = document.createElement('div'); nameEl.className = 'icon-name'; nameEl.textContent = row.icon_name;
       const info = document.createElement('div'); info.style.fontSize = '12px'; info.style.color = '#666'; info.textContent = `${row.subject} | ${row.style} | ${row.colors} | ${row.background}`;
       const actions = document.createElement('div'); actions.className = 'icon-actions';
-      const downloadLink = document.createElement('a'); downloadLink.className = 'download-link'; downloadLink.textContent = 'Download'; downloadLink.href = row.image_url; downloadLink.setAttribute('download', `${row.icon_name}.jpg`); downloadLink.target = '_blank'; actions.appendChild(downloadLink);
+      
+      // Use custom URL for download as well
+      const downloadUrl = row.custom_id ? `/aicon/${row.custom_id}.jpg` : row.image_url;
+      const downloadLink = document.createElement('a'); 
+      downloadLink.className = 'download-link'; 
+      downloadLink.textContent = 'Download'; 
+      downloadLink.href = downloadUrl; 
+      downloadLink.setAttribute('download', `${row.icon_name}.jpg`); 
+      downloadLink.target = '_blank'; 
+      actions.appendChild(downloadLink);
+      
       card.appendChild(img); card.appendChild(nameEl); card.appendChild(info); card.appendChild(actions); resultsDiv.appendChild(card);
     });
   }

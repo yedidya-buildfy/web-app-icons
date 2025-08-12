@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const colorsInput = document.getElementById('colorsInput');
   const backgroundInput = document.getElementById('backgroundInput');
 
-  let lastImageURL = null;
+  let lastGeneratedUrl = null;
   let lastSVGText = null;
   let supabaseClient = null;
 
@@ -46,68 +46,89 @@ document.addEventListener('DOMContentLoaded', () => {
   else if (typeof SUPABASE_URL !== 'undefined' && typeof SUPABASE_ANON_KEY !== 'undefined' && typeof supabase !== 'undefined') {
     try { 
       supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); 
-      console.log('🔗 Supabase client initialized:', SUPABASE_URL);
+      logSuccess('Database connection established');
       
-      // Test connection
+      // Test connection silently
       supabaseClient.from('generated_icons').select('count').limit(1).then(result => {
-        console.log('🧪 DB connection test:', result.error ? 'FAILED' : 'SUCCESS');
-        if (result.error) console.error('Connection error:', result.error);
+        if (result.error) logError('Database connection test failed');
       });
     } catch (e) { 
-      console.error('❌ Failed to create Supabase client:', e);
+      logError('Failed to connect to database');
       supabaseClient = null; 
     }
   } else {
-    console.warn('❌ Missing Supabase environment variables');
-    console.log('SUPABASE_URL defined:', typeof SUPABASE_URL !== 'undefined');
-    console.log('SUPABASE_ANON_KEY defined:', typeof SUPABASE_ANON_KEY !== 'undefined');
-    console.log('supabase library loaded:', typeof supabase !== 'undefined');
+    logError('Database configuration missing');
   }
 
   function normalize(str) { return (str || '').toString().trim(); }
   function buildIconName({ subject, context, style, colors, background }) { return `${normalize(subject)} ${normalize(context)} ${normalize(style)} ${normalize(colors)} ${normalize(background)}`.replace(/\s+/g, ' ').trim(); }
   async function computeStableHash(input) { const enc = new TextEncoder(); const data = enc.encode(input); const d = await crypto.subtle.digest('SHA-256', data); return Array.from(new Uint8Array(d)).map(b=>b.toString(16).padStart(2,'0')).join(''); }
+  
+  function generateCustomId() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let result = 'aicon_';
+    for (let i = 0; i < 12; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
+
+  // Utility functions for clean logging (hide sensitive URLs)
+  function logInfo(message) { console.log(`ℹ️ ${message}`); }
+  function logSuccess(message) { console.log(`✅ ${message}`); }
+  function logWarning(message) { console.warn(`⚠️ ${message}`); }
+  function logError(message) { console.error(`❌ ${message}`); }
 
   let isFlushingQueue = false;
 
-  async function saveGeneratedIcon({ imageURL, promptParts }) {
-    console.log('=== SAVE ICON DEBUG ===');
-    console.log('imageURL:', imageURL);
-    console.log('promptParts:', promptParts);
-    console.log('supabaseClient exists:', !!supabaseClient);
+  async function saveGeneratedIcon({ generatedImageUrl, promptParts }) {
+    // Generate custom ID for Aicon branding
+    const customId = generateCustomId();
+    const customUrl = `/aicon/${customId}.jpg`;
     
-    const payload = { subject: normalize(promptParts.subject), context: normalize(promptParts.context), style: normalize(promptParts.style), colors: normalize(promptParts.colors), background: normalize(promptParts.background), icon_name: buildIconName(promptParts), image_url: imageURL };
+    const payload = { 
+      subject: normalize(promptParts.subject), 
+      context: normalize(promptParts.context), 
+      style: normalize(promptParts.style), 
+      colors: normalize(promptParts.colors), 
+      background: normalize(promptParts.background), 
+      icon_name: buildIconName(promptParts), 
+      image_url: generatedImageUrl,
+      custom_id: customId
+    };
     const deterministic_id = await computeStableHash(`${payload.icon_name}|${payload.image_url}`);
     const record = { ...payload, deterministic_id };
-    
-    console.log('Generated record:', record);
 
-    // Try to save directly first (RLS policies allow anonymous inserts)
+    // Try to save directly first
     if (supabaseClient) {
       try {
-        console.log('Attempting direct save to Supabase...');
         const { error, data } = await supabaseClient.from('generated_icons').upsert(record, { onConflict: 'deterministic_id', ignoreDuplicates: false });
-        if (error) {
-          console.error('Supabase upsert error:', error);
-          throw error;
+        if (error) throw error;
+        
+        // Add to server cache via a backend call
+        try {
+          await fetch('/api/cache-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customId, sourceUrl: generatedImageUrl })
+          });
+          logSuccess(`Icon saved with ID: ${customId}`);
+        } catch (cacheError) {
+          logWarning('URL cache update failed');
         }
-        console.log('✅ Successfully saved icon to DB:', data);
-        return;
+        
+        return { customUrl, customId };
       } catch (e) {
-        console.error('❌ Direct save failed:', e);
-        console.error('Error details:', e?.message, e?.code, e?.hint);
+        logError('Database save failed');
       }
-    } else {
-      console.warn('❌ No Supabase client available');
     }
     
     // Queue as fallback
-    console.log('📝 Queuing icon for later save...');
     const queue = JSON.parse(localStorage.getItem('iconSaveQueue') || '[]'); 
     queue.push(record); 
     localStorage.setItem('iconSaveQueue', JSON.stringify(queue));
-    console.log('Current queue length:', queue.length);
     flushSaveQueue();
+    return { customUrl, customId };
   }
 
   async function flushSaveQueue() {
@@ -120,8 +141,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const next = queue[0];
         const { error } = await supabaseClient.from('generated_icons').upsert(next, { onConflict: 'deterministic_id', ignoreDuplicates: false });
         if (error) {
-          console.warn('Failed to flush queue item:', error);
-          // If it's a permission error, stop trying for now
           if (error.code === 'PGRST301' || error.message?.includes('permission')) {
             setTimeout(() => { isFlushingQueue = false; }, 5000);
             return;
@@ -131,9 +150,8 @@ document.addEventListener('DOMContentLoaded', () => {
         queue.shift();
         localStorage.setItem('iconSaveQueue', JSON.stringify(queue));
       }
-      if (queue.length === 0) console.log('Flushed all queued icons');
+      if (queue.length === 0) logSuccess('Queue processed successfully');
     } catch (e) {
-      console.warn('Flush failed; will retry later:', e?.message || e);
       setTimeout(() => { isFlushingQueue = false; }, 2000);
       return;
     }
@@ -155,10 +173,17 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const result = await tryGenerateWithModel(prompt, model);
       if (result) {
-        lastImageURL = result.imageURL; displayGeneratedImage(result.imageURL);
-        svgSection.classList.add('hidden'); svgResult.innerHTML=''; lastSVGText=null; downloadSvgBtn.classList.add('hidden');
+        lastGeneratedUrl = result.imageURL; 
+        
+        // Save and get custom URL
         const promptParts = { subject: iconSubjectInput?.value || '', context: contextInput?.value || '', style: styleSelect?.value || '', colors: colorsInput?.value || '', background: backgroundInput?.value || '' };
-        saveGeneratedIcon({ imageURL: result.imageURL, promptParts }).catch(()=>{});
+        const saveResult = await saveGeneratedIcon({ generatedImageUrl: result.imageURL, promptParts });
+        
+        // Use custom URL if available, fallback to original
+        const displayUrl = saveResult?.customUrl || result.imageURL;
+        displayGeneratedImage(displayUrl);
+        
+        svgSection.classList.add('hidden'); svgResult.innerHTML=''; lastSVGText=null; downloadSvgBtn.classList.add('hidden');
       }
     } catch (err) {
       errorMessage.textContent = `Generation failed: ${err.message || 'Unknown error'}`; errorSection.classList.remove('hidden');
@@ -171,7 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const response = await fetch('/api/generate', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
     const text = await response.text(); let json; try { json = JSON.parse(text || '{}'); } catch { throw new Error(`Bad response (${response.status})`); }
     if (!response.ok || json.error || json.errors) { const msg = (Array.isArray(json?.error) && json.error[0]?.message) || (Array.isArray(json?.errors) && json.errors[0]?.message) || json?.message || 'Request failed'; throw new Error(msg); }
-    const result = Array.isArray(json?.data) ? json.data.find(d => d.taskType === 'imageInference') : null; if (!result || !result.imageURL) throw new Error('No image URL returned by the API.'); return result;
+    const result = Array.isArray(json?.data) ? json.data.find(d => d.taskType === 'imageInference') : null; if (!result || !result.imageURL) throw new Error('Image generation failed'); return result;
   }
 
   async function convertToSVG() { /* unchanged here */ }
@@ -182,15 +207,15 @@ document.addEventListener('DOMContentLoaded', () => {
   function downloadSVG(){ if(!lastSVGText) return; const blob=new Blob([lastSVGText],{type:'image/svg+xml'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`vectorized-${Date.now()}.svg`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); }
   function showError(message){ errorMessage.textContent=message; errorSection.classList.remove('hidden'); }
 
-  // Add test function for debugging (remove later)
+  // Utility functions for development
   window.clearQueue = function() {
     localStorage.removeItem('iconSaveQueue');
-    console.log('🧹 Cleared local storage queue');
+    logInfo('Queue cleared');
   };
 
   window.testDatabaseSave = async function() {
     if (!supabaseClient) {
-      console.error('No Supabase client');
+      logError('Database not available');
       return;
     }
     
@@ -202,23 +227,22 @@ document.addEventListener('DOMContentLoaded', () => {
       style: 'outline',
       colors: 'black and white', 
       background: 'white',
-      image_url: 'https://example.com/test.jpg'
+      image_url: 'https://example.com/placeholder.jpg',
+      custom_id: 'test_' + Date.now()
     };
     
-    console.log('🧪 Testing database save with:', testRecord);
-    
     try {
-      const { data, error } = await supabaseClient
+      const { error } = await supabaseClient
         .from('generated_icons')
         .insert(testRecord);
         
       if (error) {
-        console.error('❌ Test save failed:', error);
+        logError('Database test failed');
       } else {
-        console.log('✅ Test save successful:', data);
+        logSuccess('Database test successful');
       }
     } catch (e) {
-      console.error('❌ Test save exception:', e);
+      logError('Database test exception');
     }
   };
 

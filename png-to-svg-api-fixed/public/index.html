@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PNG → SVG Converter</title>
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    if (location.protocol === 'file:') {
+      document.addEventListener('DOMContentLoaded', () => {
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.inset = 0;
+        overlay.style.background = 'rgba(0,0,0,0.6)';
+        overlay.style.color = '#fff';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.padding = '24px';
+        overlay.style.zIndex = 99999;
+        overlay.innerHTML = '<div style="max-width:700px;background:#111;padding:20px;border-radius:12px;">'+
+          '<h2>Open via http://localhost — not as a file</h2>'+
+          '<p>You opened <code>index.html</code> directly (<code>file://</code>), so the browser blocks JS modules/fetch. Run the server:</p>'+
+          '<ol><li><code>npm install</code></li><li><code>npm start</code> (or <code>PORT=3001 npm start</code>)</li><li>Go to <code>http://localhost:3000</code></li></ol>'+
+          '</div>';
+        document.body.appendChild(overlay);
+      });
+    }
+  </script>
+</head>
+<body>
+  <div class="wrap">
+    <h1>PNG → SVG Converter</h1>
+    <p>Paste an image URL (PNG/JPG/WebP), tweak options, and convert to SVG.</p>
+
+    <form id="form">
+      <label>Image URL
+        <input id="url" type="url" placeholder="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/SVG_Logo.svg/256px-SVG_Logo.svg.png" required>
+      </label>
+      <div class="row">
+        <label>Color <input id="color" type="color" value="#000000"></label>
+        <label>Threshold <input id="threshold" type="number" min="0" max="255" value="128"></label>
+        <label>Turd size <input id="turdSize" type="number" min="0" max="50" value="2"></label>
+        <label>Invert <input id="invert" type="checkbox"></label>
+      </div>
+      <button type="submit">Convert to SVG</button>
+    </form>
+
+    <div id="result" class="result hidden">
+      <h2>Result</h2>
+      <div class="actions">
+        <button id="download">Download SVG</button>
+        <button id="copy">Copy SVG</button>
+      </div>
+      <div id="preview" class="preview"></div>
+      <pre id="error" class="error hidden"></pre>
+    </div>
+
+    <footer>
+      <a href="/health" target="_blank">Health</a>
+    </footer>
+  </div>
+
+  <script src="client.js" type="module"></script>
+</body>
+</html>

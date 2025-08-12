@@ -31,11 +31,20 @@ const ALLOWED_IMAGE_HOSTS = new Set([
   'api.runware.ai',
 ]);
 
+// In-memory cache for custom ID to Runware URL mapping
+const customUrlCache = new Map();
+
 function setSecurityHeaders(res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.iconify.design https://cdn.jsdelivr.net/npm/@supabase/supabase-js; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.runware.ai https://kfeekskddfyyosyyplxd.supabase.co; frame-ancestors 'none';");
+}
+
+function setAiconHeaders(res) {
+  setSecurityHeaders(res);
+  res.setHeader('X-Powered-By', 'Aicon');
+  res.setHeader('X-Service', 'Aicon Image Generator');
 }
 
 const publicDir = path.join(__dirname, 'public');
@@ -128,6 +137,75 @@ function proxyImage(req, res) {
   }
 }
 
+async function serveAiconImage(req, res, customId) {
+  try {
+    // Check cache first
+    let sourceUrl = customUrlCache.get(customId);
+    
+    if (!sourceUrl) {
+      // If not in cache, we'll return 404 for now
+      // In a real implementation, you'd query the database here
+      setAiconHeaders(res);
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Image not found');
+      return;
+    }
+
+    const parsed = new URL(sourceUrl);
+    if (!/^https?:$/i.test(parsed.protocol) || !ALLOWED_IMAGE_HOSTS.has(parsed.hostname)) {
+      setAiconHeaders(res);
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      res.end('Invalid image URL');
+      return;
+    }
+
+    const client = parsed.protocol === 'https:' ? https : http;
+    const upstream = client.get(parsed.toString(), { headers: { 'Accept': 'image/*' } }, (upstreamRes) => {
+      if (upstreamRes.statusCode && upstreamRes.statusCode >= 400) {
+        setAiconHeaders(res);
+        res.writeHead(upstreamRes.statusCode, { 'Content-Type': 'text/plain' });
+        upstreamRes.pipe(res);
+        return;
+      }
+      
+      const contentType = upstreamRes.headers['content-type'] || 'image/jpeg';
+      if (!/^image\//i.test(contentType)) {
+        setAiconHeaders(res);
+        res.writeHead(415, { 'Content-Type': 'text/plain' });
+        res.end('Unsupported media type');
+        return;
+      }
+      
+      setAiconHeaders(res);
+      res.writeHead(200, { 
+        'Content-Type': contentType, 
+        'Cache-Control': 'public, max-age=86400',
+        'Content-Disposition': `inline; filename="${customId}.jpg"`
+      });
+      upstreamRes.pipe(res);
+    });
+    
+    upstream.on('error', () => {
+      setAiconHeaders(res);
+      res.writeHead(502, { 'Content-Type': 'text/plain' });
+      res.end('Image service temporarily unavailable');
+    });
+  } catch (e) {
+    setAiconHeaders(res);
+    res.writeHead(500, { 'Content-Type': 'text/plain' });
+    res.end('Internal server error');
+  }
+}
+
+function addToUrlCache(customId, sourceUrl) {
+  customUrlCache.set(customId, sourceUrl);
+  // Optional: Limit cache size
+  if (customUrlCache.size > 1000) {
+    const firstKey = customUrlCache.keys().next().value;
+    customUrlCache.delete(firstKey);
+  }
+}
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -200,6 +278,41 @@ const server = http.createServer((req, res) => {
     if (req.method === 'POST') return handleGenerate(req, res);
   }
 
+  if (pathname === '/api/cache-url') {
+    if (req.method === 'OPTIONS') {
+      setSecurityHeaders(res);
+      res.writeHead(204, { 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Origin': '*' });
+      res.end();
+      return;
+    }
+    if (req.method === 'POST') {
+      return readJson(req).then(({ customId, sourceUrl }) => {
+        if (customId && sourceUrl) {
+          addToUrlCache(customId, sourceUrl);
+          setSecurityHeaders(res);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true }));
+        } else {
+          setSecurityHeaders(res);
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing customId or sourceUrl' }));
+        }
+      }).catch(() => {
+        setSecurityHeaders(res);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      });
+    }
+  }
+
+  // Handle Aicon branded image URLs: /aicon/custom_id.jpg
+  if (req.method === 'GET' && pathname.startsWith('/aicon/')) {
+    const customId = pathname.replace('/aicon/', '').replace(/\.(jpg|jpeg|png|webp)$/i, '');
+    if (customId && customId.length > 0) {
+      return serveAiconImage(req, res, customId);
+    }
+  }
+
   if (req.method === 'GET' && pathname === '/proxy-image') {
     return proxyImage(req, res);
   }
@@ -214,6 +327,10 @@ const server = http.createServer((req, res) => {
   serveStatic(req, res);
 });
 
+// Expose cache function for testing
+global.addToUrlCache = addToUrlCache;
+
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Aicon image URLs: http://localhost:${PORT}/aicon/{custom_id}.jpg`);
 });
