@@ -185,7 +185,7 @@
   justify-content: center;
 }
 
-.download-btn, .regenerate-btn {
+.regenerate-btn {
   padding: 10px 20px;
   border: none;
   border-radius: 6px;
@@ -193,18 +193,6 @@
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.3s ease;
-}
-
-.download-btn {
-  background-color: #28a745;
-  color: white;
-}
-
-.download-btn:hover {
-  background-color: #1e7e34;
-}
-
-.regenerate-btn {
   background-color: #6c757d;
   color: white;
 }
@@ -253,21 +241,6 @@
   }
 }
 
-.convert-btn {
-  background-color: #8b5cf6;
-  color: #fff;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-}
-
-.convert-btn:hover {
-  background-color: #6d28d9;
-}
 
 .svg-result {
   background: #fff;

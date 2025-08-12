@@ -59,20 +59,6 @@ document.addEventListener('DOMContentLoaded', () => {
     catch (e) { logWarning(`Local vectorize failed: ${e.message}`); try { return await serverVectorize(imageUrl); } catch (ee) { throw ee; } }
   }
 
-  async function copySVG(imageUrl, buttonElement) {
-    const originalText = buttonElement.textContent; const originalClass = buttonElement.className;
-    try {
-      buttonElement.disabled = true; buttonElement.textContent = 'Converting…';
-      const svgText = await vectorizeToSVG(imageUrl);
-      await navigator.clipboard.writeText(svgText);
-      buttonElement.textContent = 'Copied!'; buttonElement.className = 'download-btn';
-      setTimeout(() => { buttonElement.textContent = originalText; buttonElement.className = originalClass; buttonElement.disabled = false; }, 1500);
-    } catch (err) {
-      logError(`Copy SVG failed: ${err.message}`);
-      buttonElement.textContent = 'Error'; buttonElement.className = 'regenerate-btn';
-      setTimeout(() => { buttonElement.textContent = originalText; buttonElement.className = originalClass; buttonElement.disabled = false; }, 1800);
-    }
-  }
 
   function render(icons) {
     resultsDiv.innerHTML = '';
@@ -88,14 +74,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const nameEl = document.createElement('div'); nameEl.className = 'icon-name'; nameEl.textContent = row.icon_name;
       const info = document.createElement('div'); info.style.fontSize = '12px'; info.style.color = '#666'; info.textContent = `${row.subject} | ${row.style} | ${row.colors} | ${row.background}`;
 
-      const actions = document.createElement('div'); actions.className = 'icon-actions';
-      const downloadUrl = row.image_url;
-
-      const downloadLink = document.createElement('a'); downloadLink.className = 'download-link'; downloadLink.textContent = 'Download'; downloadLink.href = downloadUrl; downloadLink.setAttribute('download', `${row.icon_name}.jpg`); downloadLink.target = '_blank'; actions.appendChild(downloadLink);
-
-      const copySvgBtn = document.createElement('button'); copySvgBtn.className = 'copy-btn'; copySvgBtn.textContent = 'Copy SVG'; copySvgBtn.style.marginLeft = '8px';
-      copySvgBtn.addEventListener('click', () => copySVG(row.image_url, copySvgBtn));
-      actions.appendChild(copySvgBtn);
+      // Create unified action buttons
+      const iconData = { type: 'generated', imageUrl: row.image_url };
+      const filename = row.icon_name.replace(/\s+/g, '-');
+      const actions = IconUtils.createActionButtons(iconData, filename);
 
       card.appendChild(img); card.appendChild(nameEl); card.appendChild(info); card.appendChild(actions); resultsDiv.appendChild(card);
     });

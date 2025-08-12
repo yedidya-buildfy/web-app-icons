@@ -170,41 +170,10 @@ document.addEventListener('DOMContentLoaded', () => {
           const nameEl = document.createElement('div');
           nameEl.className = 'icon-name';
           nameEl.textContent = name.replace(/-/g, ' ');
-          // actions container
-          const actions = document.createElement('div');
-          actions.className = 'icon-actions';
-          // copy button
-          const copyBtn = document.createElement('button');
-          copyBtn.className = 'copy-btn';
-          copyBtn.textContent = 'Copy';
-          copyBtn.addEventListener('click', () => {
-            const code = `<iconify-icon icon="${id}"></iconify-icon>`;
-            if (navigator.clipboard) {
-              navigator.clipboard.writeText(code).then(() => {
-                copyBtn.textContent = 'Copied!';
-                setTimeout(() => (copyBtn.textContent = 'Copy'), 1500);
-              }).catch((err) => {
-                console.error('Clipboard error:', err);
-              });
-            } else {
-              // fallback: create temp textarea
-              const textarea = document.createElement('textarea');
-              textarea.value = code;
-              document.body.appendChild(textarea);
-              textarea.select();
-              document.execCommand('copy');
-              document.body.removeChild(textarea);
-            }
-          });
-          // download link
-          const downloadLink = document.createElement('a');
-          downloadLink.className = 'download-link';
-          downloadLink.textContent = 'Download';
-          downloadLink.href = `https://api.iconify.design/${id}.svg?download=1`;
-          downloadLink.setAttribute('download', `${name}.svg`);
-          downloadLink.target = '_blank';
-          actions.appendChild(copyBtn);
-          actions.appendChild(downloadLink);
+          // unified actions using IconUtils
+          const iconData = { type: 'iconify', id: id };
+          const filename = name.replace(/\s+/g, '-');
+          const actions = IconUtils.createActionButtons(iconData, filename);
 
           card.appendChild(iconEl);
           card.appendChild(nameEl);
@@ -225,41 +194,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const nameEl = document.createElement('div');
             nameEl.className = 'icon-name';
             nameEl.textContent = name.replace(/-/g, ' ');
-            // actions container
-            const actions = document.createElement('div');
-            actions.className = 'icon-actions';
-            // copy button
-            const copyBtn = document.createElement('button');
-            copyBtn.className = 'copy-btn';
-            copyBtn.textContent = 'Copy';
-            copyBtn.addEventListener('click', () => {
-                const code = `<iconify-icon icon="${id}"></iconify-icon>`;
-                if (navigator.clipboard) {
-                navigator.clipboard.writeText(code).then(() => {
-                    copyBtn.textContent = 'Copied!';
-                    setTimeout(() => (copyBtn.textContent = 'Copy'), 1500);
-                }).catch((err) => {
-                    console.error('Clipboard error:', err);
-                });
-                } else {
-                // fallback: create temp textarea
-                const textarea = document.createElement('textarea');
-                textarea.value = code;
-                document.body.appendChild(textarea);
-                textarea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textarea);
-                }
-            });
-            // download link
-            const downloadLink = document.createElement('a');
-            downloadLink.className = 'download-link';
-            downloadLink.textContent = 'Download';
-            downloadLink.href = `https://api.iconify.design/${id}.svg?download=1`;
-            downloadLink.setAttribute('download', `${name}.svg`);
-            downloadLink.target = '_blank';
-            actions.appendChild(copyBtn);
-            actions.appendChild(downloadLink);
+            // unified actions using IconUtils
+            const iconData = { type: 'iconify', id: id };
+            const filename = name.replace(/\s+/g, '-');
+            const actions = IconUtils.createActionButtons(iconData, filename);
 
             card.appendChild(iconEl);
             card.appendChild(nameEl);

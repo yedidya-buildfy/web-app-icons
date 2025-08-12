@@ -11,9 +11,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const svgResult = document.getElementById('svgResult');
   const errorSection = document.getElementById('errorSection');
   const errorMessage = document.getElementById('errorMessage');
-  const downloadBtn = document.getElementById('downloadBtn');
-  const downloadSvgBtn = document.getElementById('downloadSvgBtn');
-  const convertSvgBtn = document.getElementById('convertSvgBtn');
   const regenerateBtn = document.getElementById('regenerateBtn');
 
   // New prompt builder fields
@@ -24,7 +21,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const backgroundInput = document.getElementById('backgroundInput');
 
   let lastGeneratedUrl = null;
-  let lastSVGText = null;
   let supabaseClient = null;
 
   function buildPrompt() {
@@ -156,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await saveGeneratedIcon({ generatedImageUrl: result.imageURL, promptParts });
         displayGeneratedImage(result.imageURL);
         
-        svgSection.classList.add('hidden'); svgResult.innerHTML=''; lastSVGText=null; downloadSvgBtn.classList.add('hidden');
+        svgSection.classList.add('hidden'); svgResult.innerHTML='';
       }
     } catch (err) {
       errorMessage.textContent = `Generation failed: ${err.message || 'Unknown error'}`; errorSection.classList.remove('hidden');
@@ -172,64 +168,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const result = Array.isArray(json?.data) ? json.data.find(d => d.taskType === 'imageInference') : null; if (!result || !result.imageURL) throw new Error('Image generation failed'); return result;
   }
 
-  async function convertToSVG() {
-    if (!lastGeneratedUrl) {
-      showError('No image to convert');
-      return;
-    }
 
-    try {
-      // Show loading state
-      convertSvgBtn.disabled = true;
-      convertSvgBtn.textContent = 'Converting...';
-      svgSection.classList.remove('hidden');
-      svgResult.innerHTML = 'Converting to SVG...';
-      
-      // Build the vectorize API URL with parameters
-      const params = new URLSearchParams({
-        url: lastGeneratedUrl,
-        color: '#000000',
-        threshold: '128',
-        turdSize: '2',
-        invert: 'false'
-      });
-      
-      const response = await fetch(`/api/vectorize?${params.toString()}`);
-      
-      if (!response.ok) {
-        let errorText = '';
-        try { 
-          const errorJson = await response.json();
-          errorText = errorJson.error || `HTTP ${response.status}`;
-        } catch {
-          errorText = `HTTP ${response.status}`;
-        }
-        throw new Error(errorText);
-      }
-      
-      const svgText = await response.text();
-      lastSVGText = svgText;
-      
-      // Display the SVG
-      svgResult.innerHTML = svgText;
-      downloadSvgBtn.classList.remove('hidden');
-      
-      logSuccess('Image converted to SVG successfully');
-    } catch (err) {
-      console.error('SVG conversion error:', err);
-      svgResult.innerHTML = `<p style="color: red;">Conversion failed: ${err.message}</p>`;
-      showError(`SVG conversion failed: ${err.message}`);
-    } finally {
-      // Reset button state
-      convertSvgBtn.disabled = false;
-      convertSvgBtn.textContent = 'Convert to SVG';
-    }
+  function displayGeneratedImage(imageURL) { 
+    imageResult.innerHTML = `<img src="${imageURL}" alt="Generated image" />`;
+    resultSection.classList.remove('hidden');
+    
+    // Create unified action buttons
+    const unifiedActionsContainer = document.getElementById('unifiedActions');
+    const iconData = { type: 'generated', imageUrl: imageURL };
+    const filename = `generated-icon-${Date.now()}`;
+    const actions = IconUtils.createActionButtons(iconData, filename);
+    unifiedActionsContainer.innerHTML = '';
+    unifiedActionsContainer.appendChild(actions);
+    
+    // Keep regenerate button functionality
+    const regenerateBtn = document.getElementById('regenerateBtn');
+    regenerateBtn.onclick = () => { 
+      resultSection.classList.add('hidden'); 
+      svgSection.classList.add('hidden'); 
+      svgResult.innerHTML = ''; 
+      iconSubjectInput?.focus(); 
+    };
   }
-
-  function displayGeneratedImage(imageURL) { imageResult.innerHTML = `<img src="${imageURL}" alt="Generated image" />`; resultSection.classList.remove('hidden'); downloadBtn.onclick = () => downloadImage(imageURL); convertSvgBtn.onclick = convertToSVG; downloadSvgBtn.onclick = downloadSVG; regenerateBtn.onclick = () => { resultSection.classList.add('hidden'); svgSection.classList.add('hidden'); svgResult.innerHTML=''; lastSVGText=null; downloadSvgBtn.classList.add('hidden'); iconSubjectInput?.focus(); }; }
-  function downloadImage(imageURL) { const link = document.createElement('a'); link.href = imageURL; link.download = `generated-image-${Date.now()}.jpg`; document.body.appendChild(link); link.click(); document.body.removeChild(link); }
   function setLoadingState(loading){ if(loading){ generateBtn.disabled=true; generateBtn.textContent='Generating...'; loadingSpinner.classList.remove('hidden'); } else { generateBtn.disabled=false; generateBtn.textContent='Generate Image'; loadingSpinner.classList.add('hidden'); } }
-  function downloadSVG(){ if(!lastSVGText) return; const blob=new Blob([lastSVGText],{type:'image/svg+xml'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`vectorized-${Date.now()}.svg`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); }
   function showError(message){ errorMessage.textContent=message; errorSection.classList.remove('hidden'); }
 
   // Utility functions for development
