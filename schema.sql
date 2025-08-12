@@ -44,8 +44,8 @@ CREATE OR REPLACE VIEW public.generated_icons_view AS
 SELECT id, deterministic_id, icon_name, subject, style, colors, background, image_url, created_at, context
 FROM public.generated_icons;
 
--- RLS
-ALTER TABLE public.generated_icons ENABLE ROW LEVEL SECURITY;
+-- RLS - TEMPORARILY DISABLED FOR TESTING
+-- ALTER TABLE public.generated_icons ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   IF NOT EXISTS (

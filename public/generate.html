@@ -32,23 +32,20 @@
       
       <header>
         <h1>AI Image Generator</h1>
-        <p>Generate images using Google's Imagen 4.0 Fast model via Runware.ai</p>
+        <p>Make your own Icon fast using AI</p>
       </header>
       
       <div class="generator-container">
         <div class="input-section">
-          <div class="field-grid">
+          <div class="field-grid-single-row">
             <div class="field">
               <label for="iconSubjectInput">Icon subject</label>
               <input id="iconSubjectInput" type="text" placeholder="e.g., dumbbell" />
             </div>
             <div class="field">
               <label for="contextInput">Context</label>
-              <input id="contextInput" type="text" placeholder="e.g., fitness app toolbar button" />
+              <input id="contextInput" type="text" placeholder="not required, keep minimal" />
             </div>
-          </div>
-
-          <div class="field-grid">
             <div class="field">
               <label for="styleSelect">Style</label>
               <select id="styleSelect">
@@ -63,26 +60,17 @@
               <label for="colorsInput">Colors</label>
               <input id="colorsInput" type="text" placeholder="black and white (default)" value="black and white" />
             </div>
-          </div>
-
-          <div class="field-grid">
             <div class="field">
               <label for="backgroundInput">Background</label>
               <input id="backgroundInput" type="text" placeholder="white (default)" value="white" />
             </div>
           </div>
 
-          <div class="prompt-preview-wrap">
-            <div class="prompt-preview-label">Prompt preview</div>
-            <div id="promptPreview" class="prompt-preview"></div>
-          </div>
-
-          <!-- Keep a hidden textarea for potential manual override later if needed -->
+          <!-- Keep a hidden textarea for internal use only -->
           <textarea id="promptInput" class="hidden"></textarea>
           
           <div class="generation-controls">
             <button id="generateBtn" class="generate-btn">Generate Image</button>
-            <button id="searchModelsBtn" class="search-models-btn">Search Models (Debug)</button>
             <div id="loadingSpinner" class="loading-spinner hidden"></div>
           </div>
         </div>
