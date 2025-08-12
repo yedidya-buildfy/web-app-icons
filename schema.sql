@@ -871,7 +871,25 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Create user settings table for preferences
+CREATE TABLE IF NOT EXISTS public.user_settings (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  
+  -- Settings stored as JSON for flexibility
+  settings JSONB NOT NULL DEFAULT '{}',
+  
+  -- Metadata
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  -- Ensure one settings record per user
+  CONSTRAINT unique_user_settings UNIQUE (user_id)
+);
+
 -- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_user_settings_user_id ON public.user_settings(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_settings_updated_at ON public.user_settings(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_discount_codes_code ON public.discount_codes(code);
 CREATE INDEX IF NOT EXISTS idx_discount_codes_valid_period ON public.discount_codes(valid_from, valid_until);
 CREATE INDEX IF NOT EXISTS idx_discount_code_usage_user ON public.discount_code_usage(user_id);
@@ -879,8 +897,23 @@ CREATE INDEX IF NOT EXISTS idx_discount_code_usage_code ON public.discount_code_
 CREATE INDEX IF NOT EXISTS idx_profiles_is_super_admin ON public.profiles(is_super_admin);
 
 -- Enable RLS on new tables
+ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.discount_codes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.discount_code_usage ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for user_settings
+CREATE POLICY "Users can view own settings" ON public.user_settings FOR SELECT 
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own settings" ON public.user_settings FOR INSERT 
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own settings" ON public.user_settings FOR UPDATE 
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Admin can view all settings" ON public.user_settings FOR SELECT 
+  USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_super_admin = TRUE));
 
 -- RLS Policies for discount_codes
 CREATE POLICY "Admin can manage discount codes" ON public.discount_codes FOR ALL 

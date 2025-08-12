@@ -2,9 +2,49 @@
 
 class IconUtils {
   
+  // Helper: Apply background removal to image URL
+  static async applyBackgroundRemoval(imageUrl) {
+    console.log('Applying background removal to:', imageUrl.substring(0, 50) + '...');
+    
+    // If it's already a blob URL, it means it's already processed - skip
+    if (imageUrl.startsWith('blob:')) {
+      console.log('URL is already a blob (processed), skipping background removal');
+      return imageUrl;
+    }
+    
+    if (!window.Settings || !window.Settings.get('removeBackground')) {
+      console.log('Background removal disabled, using original image');
+      return imageUrl;
+    }
+    
+    try {
+      const bgParams = window.Settings.getBackgroundRemovalParams();
+      const params = new URLSearchParams({
+        url: imageUrl,
+        ...bgParams
+      });
+      
+      console.log('Calling background removal API...');
+      const response = await fetch(`/api/remove-bg?${params.toString()}`);
+      if (!response.ok) {
+        console.warn('Background removal failed, using original image');
+        return imageUrl;
+      }
+      
+      const blob = await response.blob();
+      const processedUrl = URL.createObjectURL(blob);
+      console.log('Background removal completed, created blob URL');
+      return processedUrl;
+    } catch (error) {
+      console.warn('Background removal failed:', error);
+      return imageUrl;
+    }
+  }
+
   // Download icon as PNG
   static async downloadPNG(iconData, filename = 'icon') {
     try {
+      console.log('Starting PNG download for:', iconData);
       let canvas;
       
       if (iconData.type === 'iconify') {
@@ -12,8 +52,17 @@ class IconUtils {
         const svgText = await this.fetchIconifySVG(iconData.id);
         canvas = await this.svgToCanvas(svgText);
       } else if (iconData.type === 'generated') {
-        // Handle generated images - load image and convert to PNG
-        canvas = await this.imageUrlToCanvas(iconData.imageUrl);
+        // Step 1: Get original image URL
+        console.log('Step 1: Using original image URL');
+        let imageUrl = iconData.imageUrl;
+        
+        // Step 2: Apply background removal
+        console.log('Step 2: Applying background removal...');
+        imageUrl = await this.applyBackgroundRemoval(imageUrl);
+        
+        // Step 3: Convert to canvas for PNG
+        console.log('Step 3: Converting to PNG...');
+        canvas = await this.imageUrlToCanvas(imageUrl);
       } else if (iconData.type === 'svg') {
         // Handle direct SVG text
         canvas = await this.svgToCanvas(iconData.svgText);
@@ -31,6 +80,7 @@ class IconUtils {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
+        console.log('PNG download completed');
       }, 'image/png');
       
     } catch (error) {
@@ -42,20 +92,34 @@ class IconUtils {
   // Download icon as SVG
   static async downloadSVG(iconData, filename = 'icon') {
     try {
+      console.log('Starting SVG download for:', iconData);
       let svgText;
       
       if (iconData.type === 'iconify') {
         // Handle Iconify icons - fetch SVG directly
+        console.log('Fetching Iconify SVG for:', iconData.id);
         svgText = await this.fetchIconifySVG(iconData.id);
       } else if (iconData.type === 'generated') {
-        // Handle generated images - vectorize to SVG
-        svgText = await this.vectorizeImage(iconData.imageUrl);
+        // Step 1: Get original image URL
+        console.log('Step 1: Using original image URL');
+        let imageUrl = iconData.imageUrl;
+        
+        // Step 2: Apply background removal
+        console.log('Step 2: Applying background removal...');
+        imageUrl = await this.applyBackgroundRemoval(imageUrl);
+        
+        // Step 3: Convert to SVG
+        console.log('Step 3: Converting to SVG...');
+        svgText = await this.vectorizeImage(imageUrl);
       } else if (iconData.type === 'svg') {
         // Handle direct SVG text
+        console.log('Using direct SVG text');
         svgText = iconData.svgText;
       }
       
       if (!svgText) throw new Error('Failed to get SVG content');
+      
+      console.log('SVG content length:', svgText.length);
       
       // Download SVG
       const blob = new Blob([svgText], { type: 'image/svg+xml' });
@@ -68,6 +132,8 @@ class IconUtils {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       
+      console.log('SVG download completed successfully');
+      
     } catch (error) {
       console.error('SVG download failed:', error);
       throw new Error(`SVG download failed: ${error.message}`);
@@ -77,20 +143,34 @@ class IconUtils {
   // Copy SVG code to clipboard
   static async copySVGCode(iconData) {
     try {
+      console.log('Starting SVG copy for:', iconData);
       let svgText;
       
       if (iconData.type === 'iconify') {
         // Handle Iconify icons - fetch SVG directly
+        console.log('Fetching Iconify SVG for copy:', iconData.id);
         svgText = await this.fetchIconifySVG(iconData.id);
       } else if (iconData.type === 'generated') {
-        // Handle generated images - vectorize to SVG
-        svgText = await this.vectorizeImage(iconData.imageUrl);
+        // Step 1: Get original image URL
+        console.log('Step 1: Using original image URL');
+        let imageUrl = iconData.imageUrl;
+        
+        // Step 2: Apply background removal
+        console.log('Step 2: Applying background removal...');
+        imageUrl = await this.applyBackgroundRemoval(imageUrl);
+        
+        // Step 3: Convert to SVG
+        console.log('Step 3: Converting to SVG...');
+        svgText = await this.vectorizeImage(imageUrl);
       } else if (iconData.type === 'svg') {
         // Handle direct SVG text
+        console.log('Using direct SVG text for copy');
         svgText = iconData.svgText;
       }
       
       if (!svgText) throw new Error('Failed to get SVG content');
+      
+      console.log('Copying SVG to clipboard, length:', svgText.length);
       
       // Copy to clipboard
       if (navigator.clipboard) {
@@ -105,6 +185,8 @@ class IconUtils {
         document.body.removeChild(textarea);
       }
       
+      console.log('SVG copied to clipboard successfully');
+      
     } catch (error) {
       console.error('Copy SVG failed:', error);
       throw new Error(`Copy SVG failed: ${error.message}`);
@@ -118,23 +200,34 @@ class IconUtils {
     return await response.text();
   }
   
+
   // Helper: Vectorize image URL to SVG using local or server vectorization
   static async vectorizeImage(imageUrl) {
+    console.log('Vectorizing image...');
+    
     try {
-      // Try local vectorization first (if ImageTracer is available)
+      // For blob URLs (background-removed images), we must use local vectorization
+      if (imageUrl.startsWith('blob:')) {
+        if (typeof ImageTracer !== 'undefined') {
+          return await this.localVectorize(imageUrl);
+        } else {
+          throw new Error('ImageTracer library not loaded. Please reload the page.');
+        }
+      }
+      
+      // For regular URLs, try local first, then server
       if (typeof ImageTracer !== 'undefined') {
         return await this.localVectorize(imageUrl);
       } else {
-        // Fall back to server vectorization
         return await this.serverVectorize(imageUrl);
       }
     } catch (error) {
-      // If local fails, try server
-      if (typeof ImageTracer !== 'undefined') {
+      // If local fails and it's not a blob URL, try server
+      if (!imageUrl.startsWith('blob:')) {
         try {
           return await this.serverVectorize(imageUrl);
         } catch (serverError) {
-          throw new Error(`Vectorization failed: ${serverError.message}`);
+          throw new Error(`Vectorization failed: ${error.message}`);
         }
       }
       throw error;
@@ -145,11 +238,21 @@ class IconUtils {
   static async localVectorize(imageUrl) {
     return new Promise(async (resolve, reject) => {
       try {
-        const proxied = `/proxy-image?url=${encodeURIComponent(imageUrl)}`;
-        const resp = await fetch(proxied, { cache: 'no-store' });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        let blob;
         
-        const blob = await resp.blob();
+        if (imageUrl.startsWith('blob:')) {
+          // For blob URLs, fetch directly (no proxy needed)
+          const resp = await fetch(imageUrl, { cache: 'no-store' });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          blob = await resp.blob();
+        } else {
+          // For external URLs, use proxy
+          const proxied = `/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+          const resp = await fetch(proxied, { cache: 'no-store' });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          blob = await resp.blob();
+        }
+        
         const bitmap = await createImageBitmap(blob);
         const canvas = document.createElement('canvas');
         canvas.width = bitmap.width;
@@ -163,10 +266,8 @@ class IconUtils {
           numberofcolors: 2, strokewidth: 2, roundcoords: 1 
         };
         
-        const svgString = ImageTracer.imagedataToSVG(
-          ctx.getImageData(0, 0, canvas.width, canvas.height), 
-          options
-        );
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const svgString = ImageTracer.imagedataToSVG(imageData, options);
         
         resolve(svgString);
       } catch (e) {
@@ -177,6 +278,11 @@ class IconUtils {
   
   // Helper: Server vectorization
   static async serverVectorize(imageUrl) {
+    // Server vectorization only works with regular URLs, not blob URLs
+    if (imageUrl.startsWith('blob:')) {
+      throw new Error('Server vectorization does not support blob URLs');
+    }
+    
     const params = new URLSearchParams({
       url: imageUrl,
       color: '#000000',

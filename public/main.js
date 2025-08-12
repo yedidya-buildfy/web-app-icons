@@ -22,6 +22,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Initialize Settings with Supabase client (if available)
+  if (window.Settings && supabaseClient) {
+    // Get current user and initialize settings
+    supabaseClient.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        window.Settings.init(supabaseClient, data.user.id);
+        // Load settings from database
+        window.Settings.loadFromDatabase().catch(e => {
+          console.warn('Failed to load settings from database:', e);
+        });
+      } else {
+        // User not logged in, use local storage only
+        window.Settings.init(null, null);
+      }
+    });
+  } else if (window.Settings) {
+    // No Supabase, use local storage only
+    window.Settings.init(null, null);
+  }
+
   let debounceTimer;
   let lastData = null; // cache last search results
 

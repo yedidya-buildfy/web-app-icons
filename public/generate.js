@@ -37,12 +37,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
   buildPrompt();
 
+  // Initialize Settings first
+  if (window.Settings) {
+    window.Settings.init(null, null); // Will be updated with Supabase client later if available
+  }
+
   const sharedAuthClient = window.supabaseAuthClient;
   if (sharedAuthClient) supabaseClient = sharedAuthClient;
   else if (typeof SUPABASE_URL !== 'undefined' && typeof SUPABASE_ANON_KEY !== 'undefined' && typeof supabase !== 'undefined') {
     try { 
       supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); 
       logSuccess('Database connection established');
+      
+      // Update Settings with Supabase client
+      if (window.Settings) {
+        supabaseClient.auth.getUser().then(({ data }) => {
+          if (data.user) {
+            window.Settings.init(supabaseClient, data.user.id);
+            // Load settings from database
+            window.Settings.loadFromDatabase().catch(e => {
+              console.warn('Failed to load settings from database:', e);
+            });
+          } else {
+            // User not logged in, use local storage only
+            window.Settings.init(null, null);
+          }
+        });
+      }
       
       // Test connection silently
       supabaseClient.from('generated_icons').select('count').limit(1).then(result => {
@@ -147,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (result) {
         lastGeneratedUrl = result.imageURL; 
         
-        // Save metadata; keep using the original Runware URL
+        // Save metadata with original URL
         const promptParts = { subject: iconSubjectInput?.value || '', context: contextInput?.value || '', style: styleSelect?.value || '', colors: colorsInput?.value || '', background: backgroundInput?.value || '' };
         await saveGeneratedIcon({ generatedImageUrl: result.imageURL, promptParts });
         displayGeneratedImage(result.imageURL);
