@@ -7,13 +7,13 @@ class SettingsManager {
     this.supabaseClient = null;
     this.userId = null;
     
-    // Default settings
+    // Default settings - conservative to avoid eating into the icon
     this.defaults = {
-      removeBackground: true, // Default: no background (remove backgrounds)
-      backgroundTolerance: 35,
-      backgroundHardness: 55,
-      backgroundFeather: 2.5,
-      backgroundDespeckle: 1
+      removeBackground: true,
+      backgroundTolerance: 20,
+      backgroundHardness: 40,
+      backgroundFeather: 1.5,
+      backgroundDespeckle: 0
     };
     
     // Load settings on initialization

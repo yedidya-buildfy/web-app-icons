@@ -255,7 +255,7 @@ async function handleRemoveBackground(req, res) {
     const rgba = new Uint8ClampedArray(data);
     const w = info.width, h = info.height;
 
-    // 3) Estimate background color from border samples (median is robust to outliers)
+    // 3) Estimate background color from border samples using median (classic approach)
     const step = Math.max(1, Math.floor(Math.max(w,h) / 256)); // sample roughly every couple px
     let samples = getBorderSamples(rgba, w, h, step);
     if (samples.length > MAX_EDGE_SAMPLES) samples = samples.filter((_,i)=> i % Math.ceil(samples.length/MAX_EDGE_SAMPLES) === 0);

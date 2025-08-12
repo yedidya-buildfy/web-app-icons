@@ -1,6 +1,9 @@
 // Unified icon utilities for consistent download and conversion across the app
 
 class IconUtils {
+  // Cache processed results per original URL + settings to avoid double-processing
+  static processedCache = new Map();
+  static inflightMap = new Map();
   
   // Helper: Apply background removal to image URL
   static async applyBackgroundRemoval(imageUrl) {
@@ -19,22 +22,42 @@ class IconUtils {
     
     try {
       const bgParams = window.Settings.getBackgroundRemovalParams();
-      const params = new URLSearchParams({
-        url: imageUrl,
-        ...bgParams
-      });
-      
-      console.log('Calling background removal API...');
-      const response = await fetch(`/api/remove-bg?${params.toString()}`);
-      if (!response.ok) {
-        console.warn('Background removal failed, using original image');
-        return imageUrl;
+      const params = new URLSearchParams({ url: imageUrl, ...bgParams });
+      const cacheKey = `${imageUrl}|${params.toString()}`;
+
+      // Return cached result if available
+      if (this.processedCache.has(cacheKey)) {
+        const cached = this.processedCache.get(cacheKey);
+        if (cached && typeof cached === 'string' && cached.startsWith('blob:')) {
+          console.log('Using cached background-removed image');
+          return cached;
+        }
       }
-      
-      const blob = await response.blob();
-      const processedUrl = URL.createObjectURL(blob);
-      console.log('Background removal completed, created blob URL');
-      return processedUrl;
+
+      // Share in-flight request for the same key
+      if (this.inflightMap.has(cacheKey)) {
+        console.log('Awaiting in-flight background removal for same image/settings');
+        return await this.inflightMap.get(cacheKey);
+      }
+
+      const doFetch = async () => {
+        console.log('Calling background removal API...');
+        const response = await fetch(`/api/remove-bg?${params.toString()}`);
+        if (!response.ok) {
+          console.warn('Background removal failed, using original image');
+          return imageUrl;
+        }
+        const blob = await response.blob();
+        const processedUrl = URL.createObjectURL(blob);
+        console.log('Background removal completed, created blob URL');
+        // Cache result
+        this.processedCache.set(cacheKey, processedUrl);
+        return processedUrl;
+      };
+
+      const p = doFetch().finally(() => this.inflightMap.delete(cacheKey));
+      this.inflightMap.set(cacheKey, p);
+      return await p;
     } catch (error) {
       console.warn('Background removal failed:', error);
       return imageUrl;
@@ -261,9 +284,15 @@ class IconUtils {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(bitmap, 0, 0);
         
-        const options = { 
-          ltres: 1, qtres: 1, pathomit: 8, colorsampling: 0, 
-          numberofcolors: 2, strokewidth: 2, roundcoords: 1 
+        // Multi-color vectorization to preserve icon colors
+        const options = {
+          ltres: 1,
+          qtres: 1,
+          pathomit: 8,
+          colorsampling: 2,     // enable color sampling
+          numberofcolors: 16,   // more colors for richer icons
+          strokewidth: 1,
+          roundcoords: 1
         };
         
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
