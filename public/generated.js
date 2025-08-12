@@ -80,9 +80,8 @@ document.addEventListener('DOMContentLoaded', () => {
     icons.forEach((row) => {
       const card = document.createElement('div'); card.className = 'icon-card';
 
-      // Show custom Aicon URL for display if present, but always use original Runware URL for SVG conversion
-      const displayUrl = row.custom_id ? `/aicon/${row.custom_id}.jpg` : `/proxy-image?url=${encodeURIComponent(row.image_url)}`;
-      const runwareUrl = row.image_url; // original URL from Runware
+      // Always use the original Runware URL (proxied) for display
+      const displayUrl = `/proxy-image?url=${encodeURIComponent(row.image_url)}`;
 
       const img = document.createElement('img'); img.src = displayUrl; img.alt = row.icon_name; img.style.maxWidth = '100%'; img.style.height = 'auto'; img.style.aspectRatio = '1'; img.style.objectFit = 'contain';
 
@@ -90,13 +89,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const info = document.createElement('div'); info.style.fontSize = '12px'; info.style.color = '#666'; info.textContent = `${row.subject} | ${row.style} | ${row.colors} | ${row.background}`;
 
       const actions = document.createElement('div'); actions.className = 'icon-actions';
-      const downloadUrl = row.custom_id ? `/aicon/${row.custom_id}.jpg` : row.image_url;
+      const downloadUrl = row.image_url;
 
       const downloadLink = document.createElement('a'); downloadLink.className = 'download-link'; downloadLink.textContent = 'Download'; downloadLink.href = downloadUrl; downloadLink.setAttribute('download', `${row.icon_name}.jpg`); downloadLink.target = '_blank'; actions.appendChild(downloadLink);
 
       const copySvgBtn = document.createElement('button'); copySvgBtn.className = 'copy-btn'; copySvgBtn.textContent = 'Copy SVG'; copySvgBtn.style.marginLeft = '8px';
-      // IMPORTANT: use original Runware URL for vectorization to avoid proxying local Aicon path
-      copySvgBtn.addEventListener('click', () => copySVG(runwareUrl, copySvgBtn));
+      copySvgBtn.addEventListener('click', () => copySVG(row.image_url, copySvgBtn));
       actions.appendChild(copySvgBtn);
 
       card.appendChild(img); card.appendChild(nameEl); card.appendChild(info); card.appendChild(actions); resultsDiv.appendChild(card);

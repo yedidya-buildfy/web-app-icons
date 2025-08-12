@@ -33,8 +33,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     try {
       const limit = 100;
-      const url = `https://api.iconify.design/search?query=${encodeURIComponent(query)}&limit=${limit}`;
-      const response = await fetch(url);
+      // Use local proxy for Iconify search to avoid CSP/CORS issues and improve reliability
+      const url = `/api/iconify-search?query=${encodeURIComponent(query)}&limit=${limit}`;
+      const response = await fetch(url, { cache: 'no-store' });
       const data = await response.json();
       lastData = data; // cache results
       
@@ -69,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       console.error('Search error:', err);
       lastData = null;
+      resultsDiv.textContent = 'Search temporarily unavailable. Please try again in a moment.';
     }
   }
 

@@ -64,14 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function buildIconName({ subject, context, style, colors, background }) { return `${normalize(subject)} ${normalize(context)} ${normalize(style)} ${normalize(colors)} ${normalize(background)}`.replace(/\s+/g, ' ').trim(); }
   async function computeStableHash(input) { const enc = new TextEncoder(); const data = enc.encode(input); const d = await crypto.subtle.digest('SHA-256', data); return Array.from(new Uint8Array(d)).map(b=>b.toString(16).padStart(2,'0')).join(''); }
   
-  function generateCustomId() {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    let result = 'aicon_';
-    for (let i = 0; i < 12; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-  }
+  // Removed Aicon custom URL logic; we now keep and use the original Runware URL only
 
   // Utility functions for clean logging (hide sensitive URLs)
   function logInfo(message) { console.log(`ℹ️ ${message}`); }
@@ -82,10 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let isFlushingQueue = false;
 
   async function saveGeneratedIcon({ generatedImageUrl, promptParts }) {
-    // Generate custom ID for Aicon branding
-    const customId = generateCustomId();
-    const customUrl = `/aicon/${customId}.jpg`;
-    
+    // Save only the original Runware URL and metadata
     const payload = { 
       subject: normalize(promptParts.subject), 
       context: normalize(promptParts.context), 
@@ -93,8 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
       colors: normalize(promptParts.colors), 
       background: normalize(promptParts.background), 
       icon_name: buildIconName(promptParts), 
-      image_url: generatedImageUrl,
-      custom_id: customId
+      image_url: generatedImageUrl
     };
     const deterministic_id = await computeStableHash(`${payload.icon_name}|${payload.image_url}`);
     const record = { ...payload, deterministic_id };
@@ -102,22 +91,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Try to save directly first
     if (supabaseClient) {
       try {
-        const { error, data } = await supabaseClient.from('generated_icons').upsert(record, { onConflict: 'deterministic_id', ignoreDuplicates: false });
+        const { error } = await supabaseClient.from('generated_icons').upsert(record, { onConflict: 'deterministic_id', ignoreDuplicates: false });
         if (error) throw error;
-        
-        // Add to server cache via a backend call
-        try {
-          await fetch('/api/cache-url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ customId, sourceUrl: generatedImageUrl })
-          });
-          logSuccess(`Icon saved with ID: ${customId}`);
-        } catch (cacheError) {
-          logWarning('URL cache update failed');
-        }
-        
-        return { customUrl, customId };
+        logSuccess('Icon saved');
+        return;
       } catch (e) {
         logError('Database save failed');
       }
@@ -128,7 +105,6 @@ document.addEventListener('DOMContentLoaded', () => {
     queue.push(record); 
     localStorage.setItem('iconSaveQueue', JSON.stringify(queue));
     flushSaveQueue();
-    return { customUrl, customId };
   }
 
   async function flushSaveQueue() {
@@ -175,13 +151,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (result) {
         lastGeneratedUrl = result.imageURL; 
         
-        // Save and get custom URL
+        // Save metadata; keep using the original Runware URL
         const promptParts = { subject: iconSubjectInput?.value || '', context: contextInput?.value || '', style: styleSelect?.value || '', colors: colorsInput?.value || '', background: backgroundInput?.value || '' };
-        const saveResult = await saveGeneratedIcon({ generatedImageUrl: result.imageURL, promptParts });
-        
-        // Use custom URL if available, fallback to original
-        const displayUrl = saveResult?.customUrl || result.imageURL;
-        displayGeneratedImage(displayUrl);
+        await saveGeneratedIcon({ generatedImageUrl: result.imageURL, promptParts });
+        displayGeneratedImage(result.imageURL);
         
         svgSection.classList.add('hidden'); svgResult.innerHTML=''; lastSVGText=null; downloadSvgBtn.classList.add('hidden');
       }
@@ -279,8 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
       style: 'outline',
       colors: 'black and white', 
       background: 'white',
-      image_url: 'https://example.com/placeholder.jpg',
-      custom_id: 'test_' + Date.now()
+      image_url: 'https://example.com/placeholder.jpg'
     };
     
     try {

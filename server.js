@@ -36,21 +36,17 @@ const ALLOWED_IMAGE_HOSTS = new Set([
 
 const MAX_BYTES = 12 * 1024 * 1024; // 12MB cap for PNG-to-SVG conversion
 
-// In-memory cache for custom ID to Runware URL mapping
-const customUrlCache = new Map();
+// Removed Aicon URL mapping/cache; we always use the original source URLs now
 
 function setSecurityHeaders(res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.iconify.design https://cdn.jsdelivr.net/npm/@supabase/supabase-js; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.runware.ai https://kfeekskddfyyosyyplxd.supabase.co; frame-ancestors 'none';");
+  // Allow connections to Iconify API/CDN for free stock icon search and fetching
+  res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.iconify.design https://cdn.jsdelivr.net/npm/@supabase/supabase-js; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.runware.ai https://kfeekskddfyyosyyplxd.supabase.co https://api.iconify.design https://cdn.jsdelivr.net https://code.iconify.design; frame-ancestors 'none';");
 }
 
-function setAiconHeaders(res) {
-  setSecurityHeaders(res);
-  res.setHeader('X-Powered-By', 'Aicon');
-  res.setHeader('X-Service', 'Aicon Icon Generator');
-}
+// Removed Aicon-specific headers
 
 const publicDir = path.join(__dirname, 'public');
 
@@ -142,74 +138,9 @@ function proxyImage(req, res) {
   }
 }
 
-async function serveAiconImage(req, res, customId) {
-  try {
-    // Check cache first
-    let sourceUrl = customUrlCache.get(customId);
-    
-    if (!sourceUrl) {
-      // If not in cache, we'll return 404 for now
-      // In a real implementation, you'd query the database here
-      setAiconHeaders(res);
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('Image not found');
-      return;
-    }
+// Removed /aicon image serving; no longer proxied via custom IDs
 
-    const parsed = new URL(sourceUrl);
-    if (!/^https?:$/i.test(parsed.protocol) || !ALLOWED_IMAGE_HOSTS.has(parsed.hostname)) {
-      setAiconHeaders(res);
-      res.writeHead(400, { 'Content-Type': 'text/plain' });
-      res.end('Invalid image URL');
-      return;
-    }
-
-    const client = parsed.protocol === 'https:' ? https : http;
-    const upstream = client.get(parsed.toString(), { headers: { 'Accept': 'image/*' } }, (upstreamRes) => {
-      if (upstreamRes.statusCode && upstreamRes.statusCode >= 400) {
-        setAiconHeaders(res);
-        res.writeHead(upstreamRes.statusCode, { 'Content-Type': 'text/plain' });
-        upstreamRes.pipe(res);
-        return;
-      }
-      
-      const contentType = upstreamRes.headers['content-type'] || 'image/jpeg';
-      if (!/^image\//i.test(contentType)) {
-        setAiconHeaders(res);
-        res.writeHead(415, { 'Content-Type': 'text/plain' });
-        res.end('Unsupported media type');
-        return;
-      }
-      
-      setAiconHeaders(res);
-      res.writeHead(200, { 
-        'Content-Type': contentType, 
-        'Cache-Control': 'public, max-age=86400',
-        'Content-Disposition': `inline; filename="${customId}.jpg"`
-      });
-      upstreamRes.pipe(res);
-    });
-    
-    upstream.on('error', () => {
-      setAiconHeaders(res);
-      res.writeHead(502, { 'Content-Type': 'text/plain' });
-      res.end('Image service temporarily unavailable');
-    });
-  } catch (e) {
-    setAiconHeaders(res);
-    res.writeHead(500, { 'Content-Type': 'text/plain' });
-    res.end('Internal server error');
-  }
-}
-
-function addToUrlCache(customId, sourceUrl) {
-  customUrlCache.set(customId, sourceUrl);
-  // Optional: Limit cache size
-  if (customUrlCache.size > 1000) {
-    const firstKey = customUrlCache.keys().next().value;
-    customUrlCache.delete(firstKey);
-  }
-}
+// Removed URL cache helpers
 
 // PNG-to-SVG conversion functionality
 function potraceTrace(buffer, opts) {
@@ -357,6 +288,50 @@ async function handleGenerate(req, res) {
 const server = http.createServer((req, res) => {
   const pathname = req.url.split('?')[0];
 
+  // Lightweight proxy for Iconify search to improve reliability and avoid CORS/CSP issues
+  if (req.method === 'GET' && pathname === '/api/iconify-search') {
+    try {
+      const urlObj = new URL(req.url, 'http://localhost');
+      const query = (urlObj.searchParams.get('query') || '').trim();
+      const limitRaw = urlObj.searchParams.get('limit') || '100';
+      const limit = Math.max(1, Math.min(200, parseInt(limitRaw, 10) || 100));
+
+      if (!query) {
+        setSecurityHeaders(res);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing query' }));
+        return;
+      }
+
+      const upstreamUrl = `https://api.iconify.design/search?query=${encodeURIComponent(query)}&limit=${limit}`;
+      const upReq = https.get(upstreamUrl, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'icon-search-app/1.0 (+local)'
+        }
+      }, (upRes) => {
+        let data = '';
+        upRes.on('data', (chunk) => { data += chunk; if (data.length > 5e6) upReq.destroy(); });
+        upRes.on('end', () => {
+          setSecurityHeaders(res);
+          const status = upRes.statusCode || 502;
+          res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' });
+          res.end(data);
+        });
+      });
+      upReq.on('error', () => {
+        setSecurityHeaders(res);
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Iconify upstream error' }));
+      });
+    } catch (e) {
+      setSecurityHeaders(res);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Iconify proxy error' }));
+    }
+    return;
+  }
+
   if (pathname === '/api/generate') {
     if (req.method === 'OPTIONS') {
       setSecurityHeaders(res);
@@ -367,40 +342,9 @@ const server = http.createServer((req, res) => {
     if (req.method === 'POST') return handleGenerate(req, res);
   }
 
-  if (pathname === '/api/cache-url') {
-    if (req.method === 'OPTIONS') {
-      setSecurityHeaders(res);
-      res.writeHead(204, { 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Origin': '*' });
-      res.end();
-      return;
-    }
-    if (req.method === 'POST') {
-      return readJson(req).then(({ customId, sourceUrl }) => {
-        if (customId && sourceUrl) {
-          addToUrlCache(customId, sourceUrl);
-          setSecurityHeaders(res);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: true }));
-        } else {
-          setSecurityHeaders(res);
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Missing customId or sourceUrl' }));
-        }
-      }).catch(() => {
-        setSecurityHeaders(res);
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Invalid JSON' }));
-      });
-    }
-  }
+  // Removed /api/cache-url endpoint
 
-  // Handle Aicon branded image URLs: /aicon/custom_id.jpg
-  if (req.method === 'GET' && pathname.startsWith('/aicon/')) {
-    const customId = pathname.replace('/aicon/', '').replace(/\.(jpg|jpeg|png|webp)$/i, '');
-    if (customId && customId.length > 0) {
-      return serveAiconImage(req, res, customId);
-    }
-  }
+  // Removed /aicon/* route
 
   if (req.method === 'GET' && pathname === '/proxy-image') {
     return proxyImage(req, res);
@@ -420,10 +364,9 @@ const server = http.createServer((req, res) => {
   serveStatic(req, res);
 });
 
-// Expose cache function for testing
-global.addToUrlCache = addToUrlCache;
+// Removed test exposure of URL cache
 
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Aicon image URLs: http://localhost:${PORT}/aicon/{custom_id}.jpg`);
+  // Aicon URL route removed
 });

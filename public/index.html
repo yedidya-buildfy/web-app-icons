@@ -29,33 +29,43 @@
         <p>Select your preferred library and search for an icon. Results let you copy code or download the SVG.</p>
       </header>
       <div class="controls">
-        <label for="librarySelect">Icon Library:</label>
-        <select id="librarySelect">
-          <option value="all">All</option>
-          <option value="tabler">Tabler</option>
-          <option value="lucide">Lucide</option>
-          <option value="ph">Phosphor</option>
-          <option value="iconoir">Iconoir</option>
-          <option value="heroicons-outline">Heroicons (Outline)</option>
-          <option value="heroicons-solid">Heroicons (Solid)</option>
-        </select>
-        <label for="subLibrarySelect">Sub Library:</label>
-        <select id="subLibrarySelect">
-          <option value="all">All</option>
-        </select>
-        <label for="fillOutlineSelect">Fill/Outline:</label>
-        <select id="fillOutlineSelect">
-          <option value="all">All</option>
-          <option value="filled">Filled</option>
-          <option value="outline">Outline</option>
-        </select>
-        <label for="lineSolidSelect">Line/Solid:</label>
-        <select id="lineSolidSelect">
-          <option value="all">All</option>
-          <option value="line">Line</option>
-          <option value="solid">Solid</option>
-        </select>
-        <input type="text" id="searchInput" placeholder="Search icons..." />
+        <div class="control-group">
+          <label for="librarySelect">Icon Library:</label>
+          <select id="librarySelect">
+            <option value="all">All</option>
+            <option value="tabler">Tabler</option>
+            <option value="lucide">Lucide</option>
+            <option value="ph">Phosphor</option>
+            <option value="iconoir">Iconoir</option>
+            <option value="heroicons-outline">Heroicons (Outline)</option>
+            <option value="heroicons-solid">Heroicons (Solid)</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label for="subLibrarySelect">Sub Library:</label>
+          <select id="subLibrarySelect">
+            <option value="all">All</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label for="fillOutlineSelect">Fill/Outline:</label>
+          <select id="fillOutlineSelect">
+            <option value="all">All</option>
+            <option value="filled">Filled</option>
+            <option value="outline">Outline</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label for="lineSolidSelect">Line/Solid:</label>
+          <select id="lineSolidSelect">
+            <option value="all">All</option>
+            <option value="line">Line</option>
+            <option value="solid">Solid</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <input type="text" id="searchInput" placeholder="Search icons..." />
+        </div>
       </div>
       <div id="results" class="results"></div>
     </main>
