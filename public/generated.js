@@ -1,4 +1,4 @@
-// Generated Icons page: lists icons saved to Supabase with filters
+// Generated Icons page: lists icons saved to Supabase with filters and provides Copy SVG
 
 document.addEventListener('DOMContentLoaded', () => {
   const resultsDiv = document.getElementById('results');
@@ -10,20 +10,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const client = window.supabaseAuthClient || (typeof supabase !== 'undefined' ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null);
 
   function normalize(str) { return (str || '').toString().trim(); }
-
-  // Utility functions for clean logging (hide sensitive data)
-  function logInfo(message) { console.log(`ℹ️ ${message}`); }
-  function logSuccess(message) { console.log(`✅ ${message}`); }
-  function logWarning(message) { console.warn(`⚠️ ${message}`); }
-  function logError(message) { console.error(`❌ ${message}`); }
+  function logInfo(msg){ console.log(`ℹ️ ${msg}`);} function logSuccess(msg){ console.log(`✅ ${msg}`);} function logWarning(msg){ console.warn(`⚠️ ${msg}`);} function logError(msg){ console.error(`❌ ${msg}`);} 
 
   async function fetchIcons() {
-    if (!client) {
-      logError('Database not available');
-      resultsDiv.textContent = 'Database is not configured.';
-      return [];
-    }
-
+    if (!client) { logError('Database not available'); resultsDiv.textContent = 'Database is not configured.'; return []; }
     try {
       logInfo('Loading icons...');
       const { data, error } = await client
@@ -31,19 +21,56 @@ document.addEventListener('DOMContentLoaded', () => {
         .select('*')
         .order('created_at', { ascending: false })
         .limit(500);
-        
-      if (error) {
-        logError('Failed to load icons');
-        resultsDiv.textContent = `Failed to load icons: ${error.message}`;
-        return [];
-      }
-      
+      if (error) { logError('Failed to load icons'); resultsDiv.textContent = `Failed to load icons: ${error.message}`; return []; }
       logSuccess(`Loaded ${data?.length || 0} icons`);
       return data || [];
+    } catch (err) { logError('Network error occurred'); resultsDiv.textContent = 'Failed to load icons due to network error.'; return []; }
+  }
+
+  // Local vectorization using ImageTracer (client-side, fast for icons)
+  async function localVectorize(imageUrl){
+    return new Promise(async (resolve, reject) => {
+      try {
+        const proxied = `/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+        const resp = await fetch(proxied, { cache: 'no-store' });
+        if (!resp.ok) return reject(new Error(`HTTP ${resp.status}`));
+        const blob = await resp.blob();
+        const bitmap = await createImageBitmap(blob);
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width; canvas.height = bitmap.height;
+        const ctx = canvas.getContext('2d'); ctx.drawImage(bitmap, 0, 0);
+        const options = { ltres: 1, qtres: 1, pathomit: 8, colorsampling: 0, numberofcolors: 2, strokewidth: 2, roundcoords: 1 };
+        const svgString = ImageTracer.imagedataToSVG(ctx.getImageData(0, 0, canvas.width, canvas.height), options);
+        resolve(svgString);
+      } catch (e) { reject(e); }
+    });
+  }
+
+  // Server vectorization fallback (if you later add /api/vectorize)
+  async function serverVectorize(imageUrl){
+    const params = new URLSearchParams({ url: imageUrl, color: '#000000', threshold: '128', turdSize: '2', invert: 'false' });
+    const response = await fetch(`/api/vectorize?${params.toString()}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.text();
+  }
+
+  async function vectorizeToSVG(imageUrl){
+    try { return await localVectorize(imageUrl); }
+    catch (e) { logWarning(`Local vectorize failed: ${e.message}`); try { return await serverVectorize(imageUrl); } catch (ee) { throw ee; } }
+  }
+
+  async function copySVG(imageUrl, buttonElement) {
+    const originalText = buttonElement.textContent; const originalClass = buttonElement.className;
+    try {
+      buttonElement.disabled = true; buttonElement.textContent = 'Converting…';
+      const svgText = await vectorizeToSVG(imageUrl);
+      await navigator.clipboard.writeText(svgText);
+      buttonElement.textContent = 'Copied!'; buttonElement.className = 'download-btn';
+      setTimeout(() => { buttonElement.textContent = originalText; buttonElement.className = originalClass; buttonElement.disabled = false; }, 1500);
     } catch (err) {
-      logError('Network error occurred');
-      resultsDiv.textContent = 'Failed to load icons due to network error.';
-      return [];
+      logError(`Copy SVG failed: ${err.message}`);
+      buttonElement.textContent = 'Error'; buttonElement.className = 'regenerate-btn';
+      setTimeout(() => { buttonElement.textContent = originalText; buttonElement.className = originalClass; buttonElement.disabled = false; }, 1800);
     }
   }
 
@@ -52,28 +79,26 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!icons.length) { resultsDiv.textContent = 'No icons found.'; return; }
     icons.forEach((row) => {
       const card = document.createElement('div'); card.className = 'icon-card';
-      const img = document.createElement('img');
-      
-      // Use custom Aicon URL if available, otherwise fallback to proxy
-      const imageUrl = row.custom_id ? `/aicon/${row.custom_id}.jpg` : `/proxy-image?url=${encodeURIComponent(row.image_url)}`;
-      img.src = imageUrl; 
-      img.alt = row.icon_name;
-      img.style.maxWidth = '100%'; img.style.height = 'auto'; img.style.aspectRatio = '1'; img.style.objectFit = 'contain';
-      
+
+      // Show custom Aicon URL for display if present, but always use original Runware URL for SVG conversion
+      const displayUrl = row.custom_id ? `/aicon/${row.custom_id}.jpg` : `/proxy-image?url=${encodeURIComponent(row.image_url)}`;
+      const runwareUrl = row.image_url; // original URL from Runware
+
+      const img = document.createElement('img'); img.src = displayUrl; img.alt = row.icon_name; img.style.maxWidth = '100%'; img.style.height = 'auto'; img.style.aspectRatio = '1'; img.style.objectFit = 'contain';
+
       const nameEl = document.createElement('div'); nameEl.className = 'icon-name'; nameEl.textContent = row.icon_name;
       const info = document.createElement('div'); info.style.fontSize = '12px'; info.style.color = '#666'; info.textContent = `${row.subject} | ${row.style} | ${row.colors} | ${row.background}`;
+
       const actions = document.createElement('div'); actions.className = 'icon-actions';
-      
-      // Use custom URL for download as well
       const downloadUrl = row.custom_id ? `/aicon/${row.custom_id}.jpg` : row.image_url;
-      const downloadLink = document.createElement('a'); 
-      downloadLink.className = 'download-link'; 
-      downloadLink.textContent = 'Download'; 
-      downloadLink.href = downloadUrl; 
-      downloadLink.setAttribute('download', `${row.icon_name}.jpg`); 
-      downloadLink.target = '_blank'; 
-      actions.appendChild(downloadLink);
-      
+
+      const downloadLink = document.createElement('a'); downloadLink.className = 'download-link'; downloadLink.textContent = 'Download'; downloadLink.href = downloadUrl; downloadLink.setAttribute('download', `${row.icon_name}.jpg`); downloadLink.target = '_blank'; actions.appendChild(downloadLink);
+
+      const copySvgBtn = document.createElement('button'); copySvgBtn.className = 'copy-btn'; copySvgBtn.textContent = 'Copy SVG'; copySvgBtn.style.marginLeft = '8px';
+      // IMPORTANT: use original Runware URL for vectorization to avoid proxying local Aicon path
+      copySvgBtn.addEventListener('click', () => copySVG(runwareUrl, copySvgBtn));
+      actions.appendChild(copySvgBtn);
+
       card.appendChild(img); card.appendChild(nameEl); card.appendChild(info); card.appendChild(actions); resultsDiv.appendChild(card);
     });
   }

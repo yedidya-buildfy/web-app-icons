@@ -1,4 +1,4 @@
-# Icon Search & AI Image Generator App
+# Icon Search & AI Icon Generator App
 
 A web application that combines icon search functionality with AI-powered image generation using Runware.ai's API.
 
@@ -57,7 +57,7 @@ The app will be available at `http://localhost:3000`
 5. Copy code or download SVG files
 
 ### Image Generation
-1. Click on "Image Generator" in the navigation
+1. Click on "Icon Generator" in the navigation
 2. Enter a detailed description of the image you want to generate
 3. Click "Generate Image"
 4. Wait for the AI to create your image

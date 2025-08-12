@@ -2,6 +2,9 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
+const sharp = require('sharp');
+const potrace = require('potrace');
 
 // Load .env (lightweight parser, no external deps)
 (function loadDotEnv() {
@@ -31,6 +34,8 @@ const ALLOWED_IMAGE_HOSTS = new Set([
   'api.runware.ai',
 ]);
 
+const MAX_BYTES = 12 * 1024 * 1024; // 12MB cap for PNG-to-SVG conversion
+
 // In-memory cache for custom ID to Runware URL mapping
 const customUrlCache = new Map();
 
@@ -44,7 +49,7 @@ function setSecurityHeaders(res) {
 function setAiconHeaders(res) {
   setSecurityHeaders(res);
   res.setHeader('X-Powered-By', 'Aicon');
-  res.setHeader('X-Service', 'Aicon Image Generator');
+  res.setHeader('X-Service', 'Aicon Icon Generator');
 }
 
 const publicDir = path.join(__dirname, 'public');
@@ -206,6 +211,90 @@ function addToUrlCache(customId, sourceUrl) {
   }
 }
 
+// PNG-to-SVG conversion functionality
+function potraceTrace(buffer, opts) {
+  return new Promise((resolve, reject) => {
+    potrace.trace(buffer, opts, (err, result) => (err ? reject(err) : resolve(result)));
+  });
+}
+
+async function handleVectorize(req, res) {
+  try {
+    const urlObj = new URL(req.url, 'http://localhost');
+    const imageUrl = urlObj.searchParams.get('url');
+    const color = urlObj.searchParams.get('color') || '#000000';
+    const threshold = parseInt(urlObj.searchParams.get('threshold') || '128');
+    const turdSize = parseInt(urlObj.searchParams.get('turdSize') || '2');
+    const invert = urlObj.searchParams.get('invert') === 'true';
+    
+    if (!imageUrl) {
+      setSecurityHeaders(res);
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Missing url parameter' }));
+      return;
+    }
+
+    // Validate URL
+    try {
+      const u = new URL(imageUrl);
+      if (!/^https?:$/.test(u.protocol)) throw new Error('invalid protocol');
+    } catch {
+      setSecurityHeaders(res);
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid URL' }));
+      return;
+    }
+
+    // Fetch the image
+    const response = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      timeout: 20000,
+      maxContentLength: MAX_BYTES,
+      maxBodyLength: MAX_BYTES,
+      headers: { 
+        'User-Agent': 'icon-search-app/1.0 (+https://local)', 
+        'Accept': 'image/*,*/*' 
+      },
+      validateStatus: s => s >= 200 && s < 400
+    });
+
+    const buf = Buffer.from(response.data);
+    if (buf.length > MAX_BYTES) {
+      setSecurityHeaders(res);
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Image too large' }));
+      return;
+    }
+
+    // Normalize to paletted PNG (Potrace prefers bitmap)
+    const png = await sharp(buf)
+      .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+      .png({ palette: true })
+      .toBuffer();
+
+    // Convert to SVG using potrace
+    const svg = await potraceTrace(png, {
+      color: String(color),
+      threshold: Number(threshold),
+      turdSize: Number(turdSize),
+      invert: Boolean(invert),
+      optTolerance: 0.2
+    });
+
+    setSecurityHeaders(res);
+    res.writeHead(200, { 'Content-Type': 'image/svg+xml; charset=utf-8' });
+    res.end(svg);
+  } catch (err) {
+    console.error('vectorize error:', err);
+    const msg = (err && err.response && err.response.status) 
+      ? `Upstream HTTP ${err.response.status}` 
+      : String(err && err.code ? err.code : err);
+    setSecurityHeaders(res);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Vectorization failed', details: msg }));
+  }
+}
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -315,6 +404,10 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && pathname === '/proxy-image') {
     return proxyImage(req, res);
+  }
+
+  if (req.method === 'GET' && pathname === '/api/vectorize') {
+    return handleVectorize(req, res);
   }
 
   if (req.method !== 'GET') {

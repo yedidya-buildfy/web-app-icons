@@ -199,7 +199,59 @@ document.addEventListener('DOMContentLoaded', () => {
     const result = Array.isArray(json?.data) ? json.data.find(d => d.taskType === 'imageInference') : null; if (!result || !result.imageURL) throw new Error('Image generation failed'); return result;
   }
 
-  async function convertToSVG() { /* unchanged here */ }
+  async function convertToSVG() {
+    if (!lastGeneratedUrl) {
+      showError('No image to convert');
+      return;
+    }
+
+    try {
+      // Show loading state
+      convertSvgBtn.disabled = true;
+      convertSvgBtn.textContent = 'Converting...';
+      svgSection.classList.remove('hidden');
+      svgResult.innerHTML = 'Converting to SVG...';
+      
+      // Build the vectorize API URL with parameters
+      const params = new URLSearchParams({
+        url: lastGeneratedUrl,
+        color: '#000000',
+        threshold: '128',
+        turdSize: '2',
+        invert: 'false'
+      });
+      
+      const response = await fetch(`/api/vectorize?${params.toString()}`);
+      
+      if (!response.ok) {
+        let errorText = '';
+        try { 
+          const errorJson = await response.json();
+          errorText = errorJson.error || `HTTP ${response.status}`;
+        } catch {
+          errorText = `HTTP ${response.status}`;
+        }
+        throw new Error(errorText);
+      }
+      
+      const svgText = await response.text();
+      lastSVGText = svgText;
+      
+      // Display the SVG
+      svgResult.innerHTML = svgText;
+      downloadSvgBtn.classList.remove('hidden');
+      
+      logSuccess('Image converted to SVG successfully');
+    } catch (err) {
+      console.error('SVG conversion error:', err);
+      svgResult.innerHTML = `<p style="color: red;">Conversion failed: ${err.message}</p>`;
+      showError(`SVG conversion failed: ${err.message}`);
+    } finally {
+      // Reset button state
+      convertSvgBtn.disabled = false;
+      convertSvgBtn.textContent = 'Convert to SVG';
+    }
+  }
 
   function displayGeneratedImage(imageURL) { imageResult.innerHTML = `<img src="${imageURL}" alt="Generated image" />`; resultSection.classList.remove('hidden'); downloadBtn.onclick = () => downloadImage(imageURL); convertSvgBtn.onclick = convertToSVG; downloadSvgBtn.onclick = downloadSVG; regenerateBtn.onclick = () => { resultSection.classList.add('hidden'); svgSection.classList.add('hidden'); svgResult.innerHTML=''; lastSVGText=null; downloadSvgBtn.classList.add('hidden'); iconSubjectInput?.focus(); }; }
   function downloadImage(imageURL) { const link = document.createElement('a'); link.href = imageURL; link.download = `generated-image-${Date.now()}.jpg`; document.body.appendChild(link); link.click(); document.body.removeChild(link); }
