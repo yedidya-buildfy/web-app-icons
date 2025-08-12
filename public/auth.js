@@ -40,6 +40,13 @@
     }
   }
 
+  // Auto-enforce auth on pages unless they opt-out with <body data-auth-optional="true">
+  document.addEventListener('DOMContentLoaded', async () => {
+    const optional = document.body && document.body.getAttribute('data-auth-optional') === 'true';
+    if (!optional) await requireAuth();
+    renderAuthNav();
+  });
+
   // Expose helpers
   window.renderAuthNav = renderAuthNav;
   window.requireAuth = requireAuth;
@@ -48,7 +55,4 @@
   client.auth.onAuthStateChange((_event, _session) => {
     renderAuthNav();
   });
-
-  // Initial render
-  document.addEventListener('DOMContentLoaded', renderAuthNav);
 })();
