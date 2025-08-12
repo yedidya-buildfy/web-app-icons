@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let lastGeneratedUrl = null;
   let supabaseClient = null;
+  let currentUserId = null;
 
   function buildPrompt() {
     const subject = (iconSubjectInput?.value || '').trim() || 'generic icon';
@@ -43,7 +44,25 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const sharedAuthClient = window.supabaseAuthClient;
-  if (sharedAuthClient) supabaseClient = sharedAuthClient;
+  if (sharedAuthClient) {
+    supabaseClient = sharedAuthClient;
+    // Populate current user id if available
+    try {
+      sharedAuthClient.auth.getUser().then(({ data }) => {
+        currentUserId = data?.user?.id || null;
+        if (window.Settings) {
+          if (currentUserId) {
+            window.Settings.init(sharedAuthClient, currentUserId);
+            window.Settings.loadFromDatabase().catch(e => {
+              console.warn('Failed to load settings from database:', e);
+            });
+          } else {
+            window.Settings.init(null, null);
+          }
+        }
+      });
+    } catch (_) {}
+  }
   else if (typeof SUPABASE_URL !== 'undefined' && typeof SUPABASE_ANON_KEY !== 'undefined' && typeof supabase !== 'undefined') {
     try { 
       supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); 
@@ -53,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (window.Settings) {
         supabaseClient.auth.getUser().then(({ data }) => {
           if (data.user) {
+            currentUserId = data.user.id;
             window.Settings.init(supabaseClient, data.user.id);
             // Load settings from database
             window.Settings.loadFromDatabase().catch(e => {
@@ -104,6 +124,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     const deterministic_id = await computeStableHash(`${payload.icon_name}|${payload.image_url}`);
     const record = { ...payload, deterministic_id };
+    if (currentUserId) {
+      record.user_id = currentUserId;
+    }
 
     // Try to save directly first
     if (supabaseClient) {
@@ -132,6 +155,10 @@ document.addEventListener('DOMContentLoaded', () => {
       let queue = JSON.parse(localStorage.getItem('iconSaveQueue') || '[]');
       while (queue.length) {
         const next = queue[0];
+        // If a user logs in later, attach their id before saving
+        if (!next.user_id && currentUserId) {
+          next.user_id = currentUserId;
+        }
         const { error } = await supabaseClient.from('generated_icons').upsert(next, { onConflict: 'deterministic_id', ignoreDuplicates: false });
         if (error) {
           if (error.code === 'PGRST301' || error.message?.includes('permission')) {
@@ -152,7 +179,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (supabaseClient && supabaseClient.auth && supabaseClient.auth.onAuthStateChange) {
-    supabaseClient.auth.onAuthStateChange((_event, session) => { if (session) flushSaveQueue(); });
+    supabaseClient.auth.onAuthStateChange((_event, session) => {
+      currentUserId = session?.user?.id || null;
+      if (session) flushSaveQueue();
+    });
   }
   window.addEventListener('online', () => { flushSaveQueue(); });
   flushSaveQueue();

@@ -32,6 +32,7 @@ const PORT = process.env.PORT || 3000;
 const ALLOWED_IMAGE_HOSTS = new Set([
   'im.runware.ai',
   'api.runware.ai',
+  'api.iconify.design',
 ]);
 
 const MAX_BYTES = 12 * 1024 * 1024; // 12MB cap for PNG-to-SVG conversion
@@ -427,6 +428,834 @@ function readJson(req) {
   });
 }
 
+// API response helpers
+function sendJson(res, statusCode, data) {
+  setSecurityHeaders(res);
+  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(data));
+}
+
+function sendError(res, statusCode, message, details = null) {
+  const error = { error: message };
+  if (details) error.details = details;
+  sendJson(res, statusCode, error);
+}
+
+// Request validation helpers
+function validateSearchRequest(body) {
+  const errors = [];
+  
+  if (!body.query || typeof body.query !== 'string' || body.query.trim().length === 0) {
+    errors.push('query is required and must be a non-empty string');
+  }
+  
+  const validLibraries = ['all', 'tabler', 'lucide', 'ph', 'iconoir', 'heroicons-outline', 'heroicons-solid'];
+  if (body.library && !validLibraries.includes(body.library)) {
+    errors.push(`library must be one of: ${validLibraries.join(', ')}`);
+  }
+  
+  const validStyles = ['all', 'filled', 'outline', 'line', 'solid'];
+  if (body.style && !validStyles.includes(body.style)) {
+    errors.push(`style must be one of: ${validStyles.join(', ')}`);
+  }
+  
+  if (body.limit && (!Number.isInteger(body.limit) || body.limit < 1 || body.limit > 200)) {
+    errors.push('limit must be an integer between 1 and 200');
+  }
+  
+  return errors;
+}
+
+function validateGenerateRequest(body) {
+  const errors = [];
+  
+  if (!body.subject || typeof body.subject !== 'string' || body.subject.trim().length === 0) {
+    errors.push('subject is required and must be a non-empty string');
+  }
+  
+  const validStyles = ['outline', 'filled', 'solid', 'duotone', 'rounded'];
+  if (body.style && !validStyles.includes(body.style)) {
+    errors.push(`style must be one of: ${validStyles.join(', ')}`);
+  }
+  
+  return errors;
+}
+
+// API Key Authentication System
+const API_KEYS = new Map();
+const API_USAGE = new Map();
+const API_RATE_LIMITS = new Map();
+
+// Load API keys from environment or config
+function loadApiKeys() {
+  // For development, load from environment variables
+  const keysString = process.env.API_KEYS || '';
+  if (keysString) {
+    keysString.split(',').forEach(key => {
+      const trimmedKey = key.trim();
+      if (trimmedKey) {
+        API_KEYS.set(trimmedKey, {
+          name: `key-${trimmedKey.slice(0, 8)}`,
+          created: new Date(),
+          active: true
+        });
+      }
+    });
+  }
+  
+  // Default development key if none configured
+  if (API_KEYS.size === 0 && process.env.NODE_ENV !== 'production') {
+    const devKey = 'dev-key-12345';
+    API_KEYS.set(devKey, {
+      name: 'Development Key',
+      created: new Date(),
+      active: true
+    });
+    console.log(`⚠️  Using development API key: ${devKey}`);
+  }
+  
+  console.log(`🔑 Loaded ${API_KEYS.size} API key(s)`);
+}
+
+function validateApiKey(req) {
+  const authHeader = req.headers.authorization;
+  const apiKeyHeader = req.headers['x-api-key'];
+  
+  let apiKey = null;
+  
+  // Support both Authorization: Bearer <key> and X-API-Key: <key> headers
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    apiKey = authHeader.slice(7);
+  } else if (apiKeyHeader) {
+    apiKey = apiKeyHeader;
+  }
+  
+  if (!apiKey) {
+    return { valid: false, error: 'Missing API key. Provide via Authorization: Bearer <key> or X-API-Key: <key> header' };
+  }
+  
+  const keyInfo = API_KEYS.get(apiKey);
+  if (!keyInfo || !keyInfo.active) {
+    return { valid: false, error: 'Invalid or inactive API key' };
+  }
+  
+  // Rate limiting check
+  const now = Date.now();
+  const windowMs = 60 * 1000; // 1 minute window
+  const maxRequests = 100; // 100 requests per minute
+  
+  if (!API_RATE_LIMITS.has(apiKey)) {
+    API_RATE_LIMITS.set(apiKey, { count: 0, windowStart: now });
+  }
+  
+  const rateLimitInfo = API_RATE_LIMITS.get(apiKey);
+  
+  // Reset window if expired
+  if (now - rateLimitInfo.windowStart > windowMs) {
+    rateLimitInfo.count = 0;
+    rateLimitInfo.windowStart = now;
+  }
+  
+  if (rateLimitInfo.count >= maxRequests) {
+    return { valid: false, error: 'Rate limit exceeded. Maximum 100 requests per minute.' };
+  }
+  
+  rateLimitInfo.count++;
+  
+  // Track usage
+  if (!API_USAGE.has(apiKey)) {
+    API_USAGE.set(apiKey, { 
+      totalRequests: 0, 
+      firstUsed: now, 
+      lastUsed: now,
+      endpoints: new Map()
+    });
+  }
+  
+  const usage = API_USAGE.get(apiKey);
+  usage.totalRequests++;
+  usage.lastUsed = now;
+  
+  return { valid: true, keyInfo, apiKey };
+}
+
+function trackEndpointUsage(apiKey, endpoint) {
+  const usage = API_USAGE.get(apiKey);
+  if (usage) {
+    if (!usage.endpoints.has(endpoint)) {
+      usage.endpoints.set(endpoint, 0);
+    }
+    usage.endpoints.set(endpoint, usage.endpoints.get(endpoint) + 1);
+  }
+}
+
+function requireApiKey(req, res, endpoint) {
+  const validation = validateApiKey(req);
+  
+  if (!validation.valid) {
+    return sendError(res, 401, validation.error);
+  }
+  
+  trackEndpointUsage(validation.apiKey, endpoint);
+  console.log(`🔑 API call: ${endpoint} by ${validation.keyInfo.name}`);
+  
+  return validation;
+}
+
+// Initialize API keys
+loadApiKeys();
+
+// Helper function to fetch SVG content
+async function fetchSvgContent(url) {
+  try {
+    const response = await axios.get(url, {
+      responseType: 'text',
+      timeout: 10000,
+      headers: { 
+        'User-Agent': 'icon-search-app/1.0 (+https://local)', 
+        'Accept': 'image/svg+xml,text/plain,*/*' 
+      },
+      validateStatus: s => s >= 200 && s < 400
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch SVG:', error.message);
+    return null;
+  }
+}
+
+// Helper function to convert generated image to SVG
+async function convertToSvg(imageUrl) {
+  try {
+    console.log(`🔄 Converting generated image to SVG: ${imageUrl}`);
+    
+    // First try to vectorize using potrace
+    const response = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      timeout: 20000,
+      maxContentLength: MAX_BYTES,
+      maxBodyLength: MAX_BYTES,
+      headers: { 
+        'User-Agent': 'icon-search-app/1.0 (+https://local)', 
+        'Accept': 'image/*,*/*' 
+      },
+      validateStatus: s => s >= 200 && s < 400
+    });
+
+    const buf = Buffer.from(response.data);
+    if (buf.length > MAX_BYTES) {
+      throw new Error('Image too large');
+    }
+
+    // Normalize to paletted PNG for potrace
+    const png = await sharp(buf)
+      .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+      .png({ palette: true })
+      .toBuffer();
+
+    // Convert to SVG using potrace
+    const svg = await potraceTrace(png, {
+      color: '#000000',
+      threshold: 128,
+      turdSize: 2,
+      invert: false,
+      optTolerance: 0.2
+    });
+    
+    console.log(`✅ Successfully vectorized to SVG`);
+    return svg;
+    
+  } catch (error) {
+    console.log(`⚠️  Vectorization failed (${error.message}), creating simple SVG wrapper`);
+    // Fallback: create a simple SVG that embeds the image
+    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <image href="${imageUrl}" width="1024" height="1024"/>
+</svg>`;
+  }
+}
+
+// Icon filtering logic extracted from frontend
+function applyIconFilters(icons, filters) {
+  let filteredIcons = icons;
+  
+  // Library filter
+  if (filters.library && filters.library !== 'all') {
+    filteredIcons = filteredIcons.filter(id => id.startsWith(filters.library + ':'));
+  }
+  
+  // Sub-library filter
+  if (filters.subLibrary && filters.subLibrary !== 'all') {
+    filteredIcons = filteredIcons.filter(id => id.startsWith(filters.subLibrary + ':'));
+  }
+  
+  // Fill/Outline filter
+  if (filters.style && filters.style !== 'all') {
+    filteredIcons = filteredIcons.filter(id => {
+      const name = id.split(':')[1];
+      if (filters.style === 'filled') {
+        return name.includes('fill') || id.includes('filled') || name.includes('solid') || id.includes('solid');
+      }
+      if (filters.style === 'outline') {
+        return name.includes('outline') || id.includes('outline') || name.includes('line') || id.includes('line');
+      }
+      if (filters.style === 'line') {
+        return name.includes('line') || id.includes('line') || name.includes('outline') || id.includes('outline');
+      }
+      if (filters.style === 'solid') {
+        return name.includes('solid') || id.includes('solid') || name.includes('filled') || id.includes('fill');
+      }
+      return true;
+    });
+  }
+  
+  return filteredIcons;
+}
+
+async function handleIconSearch(req, res) {
+  // Require API key for MCP usage
+  const auth = requireApiKey(req, res, 'search');
+  if (!auth) return; // Error already sent
+  
+  try {
+    console.log(`🔍 Starting icon search...`);
+    
+    const body = await readJson(req);
+    const validationErrors = validateSearchRequest(body);
+    
+    if (validationErrors.length > 0) {
+      return sendError(res, 400, 'Validation failed', { errors: validationErrors });
+    }
+    
+    const query = body.query.trim();
+    const library = body.library || 'all';
+    const subLibrary = body.subLibrary || 'all';
+    const style = body.style || 'all';
+    
+    console.log(`🔍 Searching for: "${query}" (library: ${library}, style: ${style})`);
+    
+    // Search Iconify API with higher limit to filter down to best match
+    const upstreamUrl = `https://api.iconify.design/search?query=${encodeURIComponent(query)}&limit=50`;
+    
+    const searchPromise = new Promise((resolve, reject) => {
+      const upReq = https.get(upstreamUrl, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'icon-search-app/1.0 (+local)'
+        }
+      }, (upRes) => {
+        let data = '';
+        upRes.on('data', (chunk) => { 
+          data += chunk; 
+          if (data.length > 5e6) {
+            upReq.destroy();
+            reject(new Error('Response too large'));
+          }
+        });
+        upRes.on('end', () => {
+          try {
+            const result = JSON.parse(data);
+            resolve(result);
+          } catch (e) {
+            reject(new Error('Invalid JSON response'));
+          }
+        });
+      });
+      upReq.on('error', reject);
+      upReq.setTimeout(10000, () => {
+        upReq.destroy();
+        reject(new Error('Request timeout'));
+      });
+    });
+    
+    const searchResult = await searchPromise;
+    
+    if (!searchResult.icons || !Array.isArray(searchResult.icons)) {
+      return sendError(res, 502, 'Invalid response from search service');
+    }
+    
+    console.log(`📊 Found ${searchResult.icons.length} icons, applying filters...`);
+    
+    // Apply filters
+    const filteredIcons = applyIconFilters(searchResult.icons, {
+      library,
+      subLibrary,
+      style
+    });
+    
+    if (filteredIcons.length === 0) {
+      console.log(`❌ No icons found matching criteria`);
+      return sendError(res, 404, 'No icons found matching your criteria');
+    }
+    
+    // Return only the first (best match) icon for MCP usage
+    const iconId = filteredIcons[0];
+    const [prefix, name] = iconId.split(':');
+    const iconUrl = `https://api.iconify.design/${iconId}.svg`;
+    
+    console.log(`✅ Selected best match: ${iconId}`);
+    console.log(`📥 Fetching SVG content...`);
+    
+    // Fetch SVG content
+    const svgContent = await fetchSvgContent(iconUrl);
+    
+    if (!svgContent) {
+      return sendError(res, 502, 'Failed to fetch icon SVG content');
+    }
+    
+    console.log(`✅ Successfully fetched SVG content (${svgContent.length} bytes)`);
+    
+    // Build response with single icon and SVG content
+    const response = {
+      success: true,
+      query,
+      icon: {
+        id: iconId,
+        name: name.replace(/-/g, ' '),
+        prefix,
+        library: prefix,
+        url: iconUrl,
+        svg: svgContent,
+        metadata: {
+          totalFound: searchResult.icons.length,
+          filtered: filteredIcons.length,
+          filters: { library, subLibrary, style }
+        }
+      }
+    };
+    
+    sendJson(res, 200, response);
+    
+  } catch (error) {
+    console.error('❌ Icon search error:', error);
+    const message = error.message === 'Request timeout' 
+      ? 'Search service timeout' 
+      : 'Search temporarily unavailable';
+    sendError(res, 500, message);
+  }
+}
+
+async function handleIconGenerate(req, res) {
+  // Require API key for MCP usage
+  const auth = requireApiKey(req, res, 'generate');
+  if (!auth) return; // Error already sent
+  
+  if (!RUNWARE_API_KEY) {
+    return sendError(res, 500, 'Server not configured: RUNWARE_API_KEY missing');
+  }
+  
+  try {
+    console.log(`🎨 Starting icon generation...`);
+    
+    const body = await readJson(req);
+    const validationErrors = validateGenerateRequest(body);
+    
+    if (validationErrors.length > 0) {
+      return sendError(res, 400, 'Validation failed', { errors: validationErrors });
+    }
+    
+    // Build prompt from structured inputs
+    const subject = body.subject.trim();
+    const context = (body.context || '').trim();
+    const style = body.style || 'outline';
+    const colors = body.colors || 'black and white';
+    const background = body.background || 'white';
+    
+    const contextPart = context ? ` for ${context}` : '';
+    const prompt = `Design a simple, flat, minimalist icon of a ${subject}${contextPart} ${style} style, ${colors} colors, ${background} background, evenly spaced elements. Maintain geometric balance and consistent stroke width, no text, only icon.`;
+    
+    console.log(`📝 Generated prompt: "${prompt}"`);
+    
+    // Generate UUID for the task
+    const taskUUID = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { 
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8); 
+      return v.toString(16); 
+    });
+    
+    console.log(`🆔 Task UUID: ${taskUUID}`);
+    
+    // Prepare Runware API request
+    const tasks = [{
+      taskType: 'imageInference',
+      taskUUID,
+      positivePrompt: prompt,
+      width: 1024,
+      height: 1024,
+      model: 'google:2@3',
+      numberResults: 1
+    }];
+    
+    const payload = JSON.stringify(tasks);
+    
+    console.log(`🚀 Sending generation request to Runware API...`);
+    
+    // Call Runware API
+    const generatePromise = new Promise((resolve, reject) => {
+      const upReq = https.request('https://api.runware.ai/v1', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${RUNWARE_API_KEY}`
+        }
+      }, (upRes) => {
+        console.log(`📡 Received response from Runware API (status: ${upRes.statusCode})`);
+        
+        let data = '';
+        upRes.on('data', (d) => { 
+          data += d; 
+          if (data.length > 5e6) {
+            upReq.destroy();
+            reject(new Error('Response too large'));
+          }
+        });
+        upRes.on('end', () => {
+          try {
+            const result = JSON.parse(data);
+            resolve({ statusCode: upRes.statusCode, data: result });
+          } catch (e) {
+            reject(new Error('Invalid JSON response'));
+          }
+        });
+      });
+      upReq.on('error', (err) => {
+        console.error(`❌ Runware API request error:`, err);
+        reject(err);
+      });
+      upReq.setTimeout(30000, () => {
+        console.log(`⏰ Request timeout after 30 seconds`);
+        upReq.destroy();
+        reject(new Error('Request timeout'));
+      });
+      upReq.write(payload);
+      upReq.end();
+    });
+    
+    const { statusCode, data: result } = await generatePromise;
+    
+    if (statusCode >= 400 || result.error || result.errors) {
+      console.error(`❌ Generation failed:`, result);
+      const msg = (Array.isArray(result?.error) && result.error[0]?.message) || 
+                  (Array.isArray(result?.errors) && result.errors[0]?.message) || 
+                  result?.message || 'Generation failed';
+      return sendError(res, statusCode >= 400 ? statusCode : 500, msg);
+    }
+    
+    const imageResult = Array.isArray(result?.data) ? 
+      result.data.find(d => d.taskType === 'imageInference') : null;
+    
+    if (!imageResult || !imageResult.imageURL) {
+      console.error(`❌ No image URL in response:`, result);
+      return sendError(res, 500, 'Image generation failed');
+    }
+    
+    console.log(`✅ Image generated successfully: ${imageResult.imageURL}`);
+    console.log(`🔄 Converting to SVG format...`);
+    
+    // Convert generated image to SVG
+    const svgContent = await convertToSvg(imageResult.imageURL);
+    
+    if (!svgContent) {
+      console.error(`❌ Failed to convert to SVG`);
+      return sendError(res, 500, 'Failed to convert generated image to SVG');
+    }
+    
+    console.log(`✅ Successfully converted to SVG (${svgContent.length} bytes)`);
+    
+    // Build response with SVG content for MCP usage
+    const response = {
+      success: true,
+      prompt,
+      parameters: {
+        subject,
+        context,
+        style,
+        colors,
+        background
+      },
+      icon: {
+        id: `generated-${taskUUID}`,
+        name: `Generated ${subject} icon`,
+        type: 'generated',
+        imageUrl: imageResult.imageURL,
+        svg: svgContent,
+        width: 1024,
+        height: 1024,
+        format: 'svg'
+      },
+      taskUUID
+    };
+    
+    console.log(`🎉 Icon generation completed successfully!`);
+    sendJson(res, 200, response);
+    
+  } catch (error) {
+    console.error('❌ Icon generation error:', error);
+    const message = error.message === 'Request timeout' 
+      ? 'Generation service timeout' 
+      : 'Generation temporarily unavailable';
+    sendError(res, 500, message);
+  }
+}
+
+async function handleIconDetails(req, res) {
+  // Require API key for MCP usage
+  const auth = requireApiKey(req, res, 'details');
+  if (!auth) return; // Error already sent
+  
+  try {
+    console.log(`ℹ️  Fetching icon details...`);
+    
+    const pathname = req.url.split('?')[0];
+    const pathParts = pathname.split('/');
+    
+    // Expected format: /api/icons/{type}/{id}
+    if (pathParts.length < 5) {
+      return sendError(res, 400, 'Invalid path format. Expected: /api/icons/{type}/{id}');
+    }
+    
+    const type = pathParts[3]; // iconify or generated
+    const id = decodeURIComponent(pathParts.slice(4).join('/')); // handle nested paths
+    
+    console.log(`🔍 Looking up ${type} icon: ${id}`);
+    
+    if (type === 'iconify') {
+      // Validate iconify ID format (prefix:name)
+      if (!id.includes(':')) {
+        return sendError(res, 400, 'Invalid iconify icon ID format. Expected: prefix:name');
+      }
+      
+      const [prefix, name] = id.split(':');
+      const iconUrl = `https://api.iconify.design/${id}.svg`;
+      
+      console.log(`📥 Fetching SVG content for ${id}...`);
+      
+      // Fetch SVG content
+      const svgContent = await fetchSvgContent(iconUrl);
+      
+      if (!svgContent) {
+        return sendError(res, 502, 'Failed to fetch icon SVG content');
+      }
+      
+      console.log(`✅ Successfully fetched SVG content (${svgContent.length} bytes)`);
+      
+      const response = {
+        success: true,
+        icon: {
+          type: 'iconify',
+          id,
+          name: name.replace(/-/g, ' '),
+          prefix,
+          library: prefix,
+          url: iconUrl,
+          svg: svgContent,
+          formats: ['svg', 'png']
+        }
+      };
+      
+      sendJson(res, 200, response);
+      
+    } else if (type === 'generated') {
+      // For generated images, id should be a URL
+      try {
+        new URL(id); // validate URL format
+      } catch {
+        return sendError(res, 400, 'Invalid generated icon URL');
+      }
+      
+      console.log(`🔄 Converting generated image to SVG...`);
+      
+      // Convert to SVG
+      const svgContent = await convertToSvg(id);
+      
+      if (!svgContent) {
+        return sendError(res, 502, 'Failed to convert generated image to SVG');
+      }
+      
+      console.log(`✅ Successfully converted to SVG (${svgContent.length} bytes)`);
+      
+      const response = {
+        success: true,
+        icon: {
+          type: 'generated',
+          id,
+          imageUrl: id,
+          name: `Generated icon`,
+          svg: svgContent,
+          width: 1024,
+          height: 1024,
+          formats: ['png', 'svg']
+        }
+      };
+      
+      sendJson(res, 200, response);
+      
+    } else {
+      return sendError(res, 400, 'Invalid icon type. Must be "iconify" or "generated"');
+    }
+    
+  } catch (error) {
+    console.error('❌ Icon details error:', error);
+    sendError(res, 500, 'Failed to get icon details');
+  }
+}
+
+// API Usage tracking endpoint
+async function handleApiUsage(req, res) {
+  const auth = requireApiKey(req, res, 'usage');
+  if (!auth) return;
+  
+  const usage = API_USAGE.get(auth.apiKey);
+  const rateLimitInfo = API_RATE_LIMITS.get(auth.apiKey);
+  
+  const response = {
+    success: true,
+    apiKey: auth.keyInfo.name,
+    usage: {
+      totalRequests: usage?.totalRequests || 0,
+      firstUsed: usage?.firstUsed || null,
+      lastUsed: usage?.lastUsed || null,
+      endpoints: usage?.endpoints ? Object.fromEntries(usage.endpoints) : {},
+      rateLimit: {
+        current: rateLimitInfo?.count || 0,
+        max: 100,
+        windowMs: 60000,
+        resetsAt: rateLimitInfo ? new Date(rateLimitInfo.windowStart + 60000) : null
+      }
+    }
+  };
+  
+  sendJson(res, 200, response);
+}
+
+async function handleIconDownload(req, res) {
+  try {
+    const urlObj = new URL(req.url, 'http://localhost');
+    const type = urlObj.searchParams.get('type');
+    const format = urlObj.searchParams.get('format') || 'svg';
+    const removeBackground = urlObj.searchParams.get('removeBackground') === 'true';
+    
+    if (!type || !['iconify', 'generated'].includes(type)) {
+      return sendError(res, 400, 'Missing or invalid type parameter. Must be "iconify" or "generated"');
+    }
+    
+    if (!['svg', 'png'].includes(format)) {
+      return sendError(res, 400, 'Invalid format parameter. Must be "svg" or "png"');
+    }
+    
+    let sourceUrl;
+    let filename;
+    
+    if (type === 'iconify') {
+      const id = urlObj.searchParams.get('id');
+      if (!id || !id.includes(':')) {
+        return sendError(res, 400, 'Missing or invalid id parameter for iconify icon');
+      }
+      
+      const [prefix, name] = id.split(':');
+      sourceUrl = `https://api.iconify.design/${id}.svg`;
+      filename = `${name.replace(/\s+/g, '-')}.${format}`;
+      
+    } else if (type === 'generated') {
+      const url = urlObj.searchParams.get('url');
+      if (!url) {
+        return sendError(res, 400, 'Missing url parameter for generated icon');
+      }
+      
+      try {
+        new URL(url); // validate URL
+        sourceUrl = url;
+        filename = `generated-icon-${Date.now()}.${format}`;
+      } catch {
+        return sendError(res, 400, 'Invalid URL parameter');
+      }
+    }
+    
+    // If background removal is requested, route through that endpoint
+    if (removeBackground) {
+      return handleRemoveBackground(req, res);
+    }
+    
+    // If format conversion is needed (PNG from SVG), handle that
+    if (format === 'png') {
+      try {
+        // Fetch the source image
+        const response = await axios.get(sourceUrl, {
+          responseType: 'arraybuffer',
+          timeout: 20000,
+          maxContentLength: MAX_BYTES,
+          maxBodyLength: MAX_BYTES,
+          headers: { 
+            'User-Agent': 'icon-search-app/1.0 (+https://local)', 
+            'Accept': 'image/*,*/*' 
+          },
+          validateStatus: s => s >= 200 && s < 400
+        });
+        
+        const buf = Buffer.from(response.data);
+        
+        // Convert to PNG using Sharp
+        const png = await sharp(buf)
+          .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+          .png()
+          .toBuffer();
+        
+        setSecurityHeaders(res);
+        res.writeHead(200, { 
+          'Content-Type': 'image/png',
+          'Content-Disposition': `attachment; filename="${filename}"`
+        });
+        res.end(png);
+        
+      } catch (error) {
+        console.error('PNG conversion error:', error);
+        sendError(res, 500, 'Failed to convert to PNG');
+      }
+      
+    } else {
+      // Direct SVG download - proxy the request
+      try {
+        const parsed = new URL(sourceUrl);
+        if (!/^https?:$/i.test(parsed.protocol) || isPrivateHost(parsed.hostname)) {
+          return sendError(res, 400, 'Blocked host');
+        }
+
+        const client = parsed.protocol === 'https:' ? https : http;
+        const upstream = client.get(parsed.toString(), { 
+          headers: { 'Accept': 'image/*' } 
+        }, (upstreamRes) => {
+          if (upstreamRes.statusCode && upstreamRes.statusCode >= 400) {
+            setSecurityHeaders(res);
+            res.writeHead(upstreamRes.statusCode, { 'Content-Type': 'text/plain' });
+            upstreamRes.pipe(res);
+            return;
+          }
+          
+          const contentType = upstreamRes.headers['content-type'] || 'image/svg+xml';
+          setSecurityHeaders(res);
+          res.writeHead(200, { 
+            'Content-Type': contentType,
+            'Content-Disposition': `attachment; filename="${filename}"`
+          });
+          upstreamRes.pipe(res);
+        });
+        
+        upstream.on('error', () => {
+          sendError(res, 502, 'Upstream error');
+        });
+        
+      } catch (error) {
+        console.error('Download proxy error:', error);
+        sendError(res, 500, 'Download failed');
+      }
+    }
+    
+  } catch (error) {
+    console.error('Icon download error:', error);
+    sendError(res, 500, 'Download failed');
+  }
+}
+
 async function handleGenerate(req, res) {
   if (!RUNWARE_API_KEY) {
     setSecurityHeaders(res);
@@ -478,6 +1307,52 @@ async function handleGenerate(req, res) {
 const server = http.createServer((req, res) => {
   const pathname = req.url.split('?')[0];
 
+  // NEW UNIFIED API ENDPOINTS
+  
+  // Icon Search API - POST /api/icons/search
+  if (pathname === '/api/icons/search') {
+    if (req.method === 'OPTIONS') {
+      setSecurityHeaders(res);
+      res.writeHead(204, { 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Origin': '*' });
+      res.end();
+      return;
+    }
+    if (req.method === 'POST') return handleIconSearch(req, res);
+    return sendError(res, 405, 'Method Not Allowed');
+  }
+  
+  // Icon Generate API - POST /api/icons/generate  
+  if (pathname === '/api/icons/generate') {
+    if (req.method === 'OPTIONS') {
+      setSecurityHeaders(res);
+      res.writeHead(204, { 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Origin': '*' });
+      res.end();
+      return;
+    }
+    if (req.method === 'POST') return handleIconGenerate(req, res);
+    return sendError(res, 405, 'Method Not Allowed');
+  }
+  
+  // Icon Details API - GET /api/icons/{type}/{id}
+  if (pathname.startsWith('/api/icons/') && pathname.split('/').length >= 5) {
+    if (req.method === 'GET') return handleIconDetails(req, res);
+    return sendError(res, 405, 'Method Not Allowed');
+  }
+  
+  // Icon Download API - GET /api/icons/download
+  if (pathname === '/api/icons/download') {
+    if (req.method === 'GET') return handleIconDownload(req, res);
+    return sendError(res, 405, 'Method Not Allowed');
+  }
+  
+  // API Usage tracking - GET /api/usage
+  if (pathname === '/api/usage') {
+    if (req.method === 'GET') return handleApiUsage(req, res);
+    return sendError(res, 405, 'Method Not Allowed');
+  }
+
+  // EXISTING ENDPOINTS FOR BACKWARDS COMPATIBILITY
+  
   // Lightweight proxy for Iconify search to improve reliability and avoid CORS/CSP issues
   if (req.method === 'GET' && pathname === '/api/iconify-search') {
     try {
@@ -531,10 +1406,6 @@ const server = http.createServer((req, res) => {
     }
     if (req.method === 'POST') return handleGenerate(req, res);
   }
-
-  // Removed /api/cache-url endpoint
-
-  // Removed /aicon/* route
 
   if (req.method === 'GET' && pathname === '/proxy-image') {
     return proxyImage(req, res);
