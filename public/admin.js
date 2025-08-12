@@ -6,6 +6,14 @@ let editingPlanId = null;
 let isEditingDiscount = false;
 let editingDiscountId = null;
 
+// Helper: ensure we have a Supabase client
+function ensureAuthClient() {
+  if (!supabaseClient && (window.supabaseAuthClient || window.supabaseClient)) {
+    supabaseClient = window.supabaseAuthClient || window.supabaseClient;
+  }
+  return supabaseClient;
+}
+
 // Initialize admin dashboard
 document.addEventListener('DOMContentLoaded', async function() {
   try {
@@ -62,7 +70,7 @@ async function checkAdminAccess() {
     console.log('Checking admin access...');
     
     // Use the global client that was set in waitForAuthClient
-    if (!supabaseClient) {
+    if (!ensureAuthClient()) {
       console.error('No Supabase client available');
       throw new Error('Authentication system not ready');
     }
@@ -128,6 +136,11 @@ function showSection(sectionName) {
   
   // Add active class to clicked nav button
   event.target.classList.add('active');
+
+  // Lazy-load data for certain sections when shown
+  if (sectionName === 'customers') {
+    loadCustomers();
+  }
 }
 
 // Setup form handlers
@@ -547,6 +560,61 @@ async function loadAnalytics() {
   } catch (error) {
     console.error('Failed to load analytics:', error);
     showAlert('Failed to load analytics: ' + error.message, 'danger');
+  }
+}
+
+// Load customers overview
+async function loadCustomers() {
+  try {
+    const filter = (document.getElementById('customer-filter')?.value || '').trim().toLowerCase();
+
+    // Ensure auth client and current user
+    if (!ensureAuthClient()) {
+      await waitForAuthClient();
+      if (!ensureAuthClient()) throw new Error('Authentication system not ready');
+    }
+    if (!currentUser) {
+      await checkAdminAccess();
+    }
+    if (!currentUser) throw new Error('Access denied: Admin privileges required');
+
+    // Use secure admin RPC that aggregates per-user stats
+    const { data: rows, error } = await supabaseClient.rpc('admin_get_customers_overview', {
+      p_admin_user_id: currentUser.id
+    });
+    if (error) throw error;
+
+    const tbody = document.getElementById('customers-tbody');
+    tbody.innerHTML = '';
+
+    rows
+      .filter(r => !filter || (r.email || '').toLowerCase().includes(filter))
+      .forEach(r => {
+        const tr = document.createElement('tr');
+        const plan = r.current_plan_id ? `${r.current_plan_name || r.current_plan_id}` : '';
+        const billing = r.billing_cycle || '';
+        const estMonthly = Number(r.estimated_monthly_revenue || 0);
+        const estTotal = Number(r.estimated_total_spend || 0);
+        const createdAt = r.profile_created_at ? new Date(r.profile_created_at).toLocaleString() : '';
+
+        tr.innerHTML = `
+          <td>${r.email || ''}</td>
+          <td>${createdAt}</td>
+          <td>${plan}</td>
+          <td>${billing}</td>
+          <td>${estMonthly ? `$${estMonthly.toFixed(2)}` : ''}</td>
+          <td>${r.generation_count ?? ''}</td>
+          <td>${r.download_png_count ?? ''}</td>
+          <td>${r.download_svg_count ?? ''}</td>
+          <td>${r.copy_svg_count ?? ''}</td>
+          <td>${r.total_usage_count ?? ''}</td>
+          <td>${estTotal ? `$${estTotal.toFixed(2)}` : ''}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+  } catch (error) {
+    console.error('Failed to load customers:', error);
+    showAlert('Failed to load customers: ' + error.message, 'danger');
   }
 }
 
