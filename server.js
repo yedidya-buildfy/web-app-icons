@@ -5,6 +5,7 @@ const path = require('path');
 const axios = require('axios');
 const sharp = require('sharp');
 const potrace = require('potrace');
+const { createClient } = require('@supabase/supabase-js');
 
 // Load .env (lightweight parser, no external deps)
 (function loadDotEnv() {
@@ -28,6 +29,21 @@ const potrace = require('potrace');
 
 const RUNWARE_API_KEY = process.env.RUNWARE_API_KEY || '';
 const PORT = process.env.PORT || 3000;
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+
+// Initialize Supabase client for server-side usage tracking
+let supabase = null;
+if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+  try {
+    supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    console.log('✅ Supabase client initialized for usage tracking');
+  } catch (e) {
+    console.warn('⚠️ Failed to initialize Supabase client:', e.message);
+  }
+} else {
+  console.warn('⚠️ Supabase configuration missing - usage tracking disabled');
+}
 
 const ALLOWED_IMAGE_HOSTS = new Set([
   'im.runware.ai',
@@ -45,7 +61,7 @@ function setSecurityHeaders(res) {
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-Frame-Options', 'DENY');
   // Allow connections to Iconify API/CDN for free stock icon search and fetching
-  res.setHeader('Content-Security-Policy', "default-src 'self' blob:; img-src 'self' data: blob: https://api.iconify.design https://im.runware.ai https://api.runware.ai; script-src 'self' https://cdn.jsdelivr.net https://code.iconify.design; style-src 'self'; connect-src 'self' blob: https://api.runware.ai https://kfeekskddfyyosyyplxd.supabase.co https://api.iconify.design https://cdn.jsdelivr.net https://code.iconify.design; frame-ancestors 'none';");
+  res.setHeader('Content-Security-Policy', "default-src 'self' blob:; img-src 'self' data: blob: https://api.iconify.design https://im.runware.ai https://api.runware.ai; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.iconify.design; style-src 'self' 'unsafe-inline'; connect-src 'self' blob: https://api.runware.ai https://kfeekskddfyyosyyplxd.supabase.co https://api.iconify.design https://cdn.jsdelivr.net https://code.iconify.design; frame-ancestors 'none';");
 }
 
 // Removed Aicon-specific headers
@@ -445,6 +461,97 @@ function readJson(req) {
     });
     req.on('error', reject);
   });
+}
+
+// Usage tracking functions
+async function trackUsage(userId, eventType, eventSubtype = null, resourceId = null, resourceMetadata = null, ipAddress = null, userAgent = null) {
+  if (!supabase) {
+    console.log('Usage tracking skipped - Supabase not configured');
+    return null;
+  }
+  
+  try {
+    // Only track usage for authenticated users with valid profiles
+    if (!userId) {
+      console.log('📊 Usage tracking skipped - no authenticated user');
+      return null;
+    }
+
+    // Verify user exists in profiles table
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', userId)
+      .single();
+    
+    if (profileError || !profile) {
+      console.log(`⚠️ User profile not found for ${userId}, skipping usage tracking`);
+      return null;
+    }
+
+    // Call the database function to track usage for authenticated users only
+    const { data, error } = await supabase.rpc('track_usage_event', {
+      p_user_id: userId,
+      p_event_type: eventType,
+      p_event_subtype: eventSubtype,
+      p_resource_id: resourceId,
+      p_resource_metadata: resourceMetadata,
+      p_ip_address: ipAddress,
+      p_user_agent: userAgent
+    });
+
+    if (error) {
+      console.error('❌ Usage tracking failed:', error.message);
+      return null;
+    }
+    
+    console.log(`📊 Tracked usage: ${eventType}${eventSubtype ? `(${eventSubtype})` : ''} for user ${userId}`);
+    return data;
+  } catch (e) {
+    console.error('❌ Usage tracking exception:', e.message);
+    return null;
+  }
+}
+
+function extractUserFromAuthHeader(req) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+  
+  try {
+    // Extract JWT payload (simple base64 decode - for logging purposes only)
+    const token = authHeader.substring(7);
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+    return payload.sub || null; // 'sub' is the user ID in JWT
+  } catch (e) {
+    return null;
+  }
+}
+
+function getClientInfo(req) {
+  return {
+    ipAddress: req.headers['x-forwarded-for'] || req.connection.remoteAddress || null,
+    userAgent: req.headers['user-agent'] || null
+  };
+}
+
+function requireAuthentication(req, res) {
+  const userId = extractUserFromAuthHeader(req);
+  if (!userId) {
+    setSecurityHeaders(res);
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      error: 'Authentication required', 
+      message: 'Please log in to use this feature',
+      redirect: '/login.html'
+    }));
+    return false;
+  }
+  return userId;
 }
 
 // API response helpers
@@ -1282,6 +1389,13 @@ async function handleGenerate(req, res) {
     res.end(JSON.stringify({ error: 'Server not configured: RUNWARE_API_KEY missing' }));
     return;
   }
+
+  // Require authentication for generation
+  const userId = requireAuthentication(req, res);
+  if (!userId) return;
+  
+  const { ipAddress, userAgent } = getClientInfo(req);
+  
   try {
     const tasks = await readJson(req);
     const safeTasks = tasks.filter(t => t && t.taskType === 'imageInference');
@@ -1292,6 +1406,16 @@ async function handleGenerate(req, res) {
       return;
     }
 
+    // Track the generation attempt
+    const firstTask = safeTasks[0];
+    const resourceMetadata = {
+      prompt: firstTask.positivePrompt,
+      model: firstTask.model,
+      width: firstTask.width,
+      height: firstTask.height,
+      taskCount: safeTasks.length
+    };
+
     const payload = JSON.stringify(safeTasks);
 
     const upReq = https.request('https://api.runware.ai/v1', {
@@ -1300,16 +1424,22 @@ async function handleGenerate(req, res) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${RUNWARE_API_KEY}`
       }
-    }, (upRes) => {
+    }, async (upRes) => {
       let data = '';
       upRes.on('data', (d) => { data += d; if (data.length > 5e6) upReq.destroy(); });
-      upRes.on('end', () => {
+      upRes.on('end', async () => {
         setSecurityHeaders(res);
         res.writeHead(upRes.statusCode || 200, { 'Content-Type': upRes.headers['content-type'] || 'application/json', 'Cache-Control': 'no-store' });
+        
+        // Track successful generation
+        if (upRes.statusCode && upRes.statusCode < 400) {
+          await trackUsage(userId, 'generate', null, firstTask.taskUUID, resourceMetadata, ipAddress, userAgent);
+        }
+        
         res.end(data);
       });
     });
-    upReq.on('error', () => {
+    upReq.on('error', async () => {
       setSecurityHeaders(res);
       res.writeHead(502, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Upstream error' }));
@@ -1374,6 +1504,10 @@ const server = http.createServer((req, res) => {
   
   // Lightweight proxy for Iconify search to improve reliability and avoid CORS/CSP issues
   if (req.method === 'GET' && pathname === '/api/iconify-search') {
+    // Require authentication for icon search
+    const userId = requireAuthentication(req, res);
+    if (!userId) return;
+    
     try {
       const urlObj = new URL(req.url, 'http://localhost');
       const query = (urlObj.searchParams.get('query') || '').trim();
@@ -1431,10 +1565,14 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === 'GET' && pathname === '/api/vectorize') {
+    const userId = requireAuthentication(req, res);
+    if (!userId) return;
     return handleVectorize(req, res);
   }
 
   if (req.method === 'GET' && pathname === '/api/remove-bg') {
+    const userId = requireAuthentication(req, res);
+    if (!userId) return;
     return handleRemoveBackground(req, res);
   }
 

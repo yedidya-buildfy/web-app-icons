@@ -19,6 +19,7 @@
     "node": ">=14.0.0"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.55.0",
     "axios": "^1.11.0",
     "potrace": "^2.1.8",
     "sharp": "^0.34.3"

@@ -213,7 +213,35 @@ document.addEventListener('DOMContentLoaded', () => {
   async function tryGenerateWithModel(prompt, model) {
     const taskUUID = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0, v = c==='x'?r:(r&0x3|0x8); return v.toString(16); });
     const payload = [{ taskType:'imageInference', taskUUID, positivePrompt: prompt, width:1024, height:1024, model, numberResults:1 }];
-    const response = await fetch('/api/generate', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+    
+    // Add authorization header if user is logged in
+    const headers = { 'Content-Type': 'application/json' };
+    if (supabaseClient) {
+      try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (session?.access_token) {
+          headers.Authorization = `Bearer ${session.access_token}`;
+        }
+      } catch (e) {
+        // Ignore auth errors for tracking
+      }
+    }
+    
+    const response = await fetch('/api/generate', { method:'POST', headers, body: JSON.stringify(payload) });
+    
+    // Handle authentication errors
+    if (response.status === 401) {
+      const errorData = await response.json().catch(() => ({}));
+      console.warn('Authentication required for image generation');
+      if (errorData.redirect) {
+        const current = new URL(window.location.href);
+        window.location.href = `${errorData.redirect}?redirect=${encodeURIComponent(current.pathname)}`;
+      } else {
+        window.location.href = `/login.html?redirect=${encodeURIComponent(window.location.pathname)}`;
+      }
+      return;
+    }
+    
     const text = await response.text(); let json; try { json = JSON.parse(text || '{}'); } catch { throw new Error(`Bad response (${response.status})`); }
     if (!response.ok || json.error || json.errors) { const msg = (Array.isArray(json?.error) && json.error[0]?.message) || (Array.isArray(json?.errors) && json.errors[0]?.message) || json?.message || 'Request failed'; throw new Error(msg); }
     const result = Array.isArray(json?.data) ? json.data.find(d => d.taskType === 'imageInference') : null; if (!result || !result.imageURL) throw new Error('Image generation failed'); return result;

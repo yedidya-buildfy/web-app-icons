@@ -151,6 +151,22 @@ function setupFormHandlers() {
   // Discount form handler
   document.getElementById('discount-form').addEventListener('submit', handleDiscountSubmit);
   
+  // Navigation handlers
+  document.querySelectorAll('.nav-btn[data-section]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const section = e.target.getAttribute('data-section');
+      showSection(section);
+    });
+  });
+  
+  // Button action handlers
+  document.querySelectorAll('[data-action]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const action = e.target.getAttribute('data-action');
+      handleButtonAction(action, e);
+    });
+  });
+  
   // Set default dates for discount form
   const now = new Date();
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -167,6 +183,25 @@ function formatDateTimeLocal(date) {
   const minutes = String(date.getMinutes()).padStart(2, '0');
   
   return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+// Handle button actions
+function handleButtonAction(action, event) {
+  event.preventDefault();
+  
+  switch(action) {
+    case 'reset-plan-form':
+      resetPlanForm();
+      break;
+    case 'reset-discount-form':
+      resetDiscountForm();
+      break;
+    case 'load-customers':
+      loadCustomers();
+      break;
+    default:
+      console.warn('Unknown button action:', action);
+  }
 }
 
 // Load subscription plans
@@ -584,34 +619,86 @@ async function loadCustomers() {
     });
     if (error) throw error;
 
+    // Update summary statistics
+    const totalCustomers = rows.length;
+    const activeCustomers = rows.filter(r => r.total_usage_count > 0).length;
+    const customersWithProfiles = rows.filter(r => r.full_name && r.full_name.trim() !== '').length;
+    const adminUsers = rows.filter(r => r.is_super_admin === true).length;
+    
+    // Usage statistics
+    const totalGenerations = rows.reduce((sum, r) => sum + (r.generation_count || 0), 0);
+    const totalPngDownloads = rows.reduce((sum, r) => sum + (r.download_png_count || 0), 0);
+    const totalSvgDownloads = rows.reduce((sum, r) => sum + (r.download_svg_count || 0), 0);
+    const totalCopySvg = rows.reduce((sum, r) => sum + (r.copy_svg_count || 0), 0);
+    const totalDownloads = totalPngDownloads + totalSvgDownloads + totalCopySvg;
+    
+    // Revenue statistics
+    const estimatedMonthlyRevenue = rows.reduce((sum, r) => sum + (Number(r.estimated_monthly_revenue) || 0), 0);
+    
+    // Update DOM elements
+    document.getElementById('total-customers').textContent = totalCustomers;
+    document.getElementById('active-customers').textContent = activeCustomers;
+    document.getElementById('customers-with-profiles').textContent = customersWithProfiles;
+    document.getElementById('admin-users').textContent = adminUsers;
+    document.getElementById('total-generations').textContent = totalGenerations.toLocaleString();
+    document.getElementById('total-downloads').textContent = totalDownloads.toLocaleString();
+    document.getElementById('png-downloads').textContent = totalPngDownloads.toLocaleString();
+    document.getElementById('svg-downloads').textContent = totalSvgDownloads.toLocaleString();
+    document.getElementById('copy-svg-actions').textContent = totalCopySvg.toLocaleString();
+    document.getElementById('estimated-revenue').textContent = '$' + estimatedMonthlyRevenue.toFixed(2);
+    
+    // Populate table with improved layout
     const tbody = document.getElementById('customers-tbody');
     tbody.innerHTML = '';
-
-    rows
-      .filter(r => !filter || (r.email || '').toLowerCase().includes(filter))
-      .forEach(r => {
-        const tr = document.createElement('tr');
-        const plan = r.current_plan_id ? `${r.current_plan_name || r.current_plan_id}` : '';
-        const billing = r.billing_cycle || '';
-        const estMonthly = Number(r.estimated_monthly_revenue || 0);
-        const estTotal = Number(r.estimated_total_spend || 0);
-        const createdAt = r.profile_created_at ? new Date(r.profile_created_at).toLocaleString() : '';
-
-        tr.innerHTML = `
-          <td>${r.email || ''}</td>
-          <td>${createdAt}</td>
-          <td>${plan}</td>
-          <td>${billing}</td>
-          <td>${estMonthly ? `$${estMonthly.toFixed(2)}` : ''}</td>
-          <td>${r.generation_count ?? ''}</td>
-          <td>${r.download_png_count ?? ''}</td>
-          <td>${r.download_svg_count ?? ''}</td>
-          <td>${r.copy_svg_count ?? ''}</td>
-          <td>${r.total_usage_count ?? ''}</td>
-          <td>${estTotal ? `$${estTotal.toFixed(2)}` : ''}</td>
-        `;
-        tbody.appendChild(tr);
-      });
+    
+    const filteredRows = rows.filter(r => !filter || (r.email || '').toLowerCase().includes(filter));
+    
+    filteredRows.forEach(r => {
+      const tr = document.createElement('tr');
+      const plan = r.current_plan_id ? r.current_plan_name || r.current_plan_id : 'Free';
+      const planClass = plan.toLowerCase() === 'free' ? 'plan-free' : 
+                       plan.toLowerCase().includes('pro') ? 'plan-pro' : 'plan-enterprise';
+      const estMonthly = Number(r.estimated_monthly_revenue || 0);
+      const estTotal = Number(r.estimated_total_spend || 0);
+      const createdAt = r.profile_created_at ? new Date(r.profile_created_at).toLocaleDateString() : 'Unknown';
+      
+      // Create usage summary
+      const usageParts = [];
+      if (r.generation_count > 0) usageParts.push(`${r.generation_count} generations`);
+      if ((r.download_png_count + r.download_svg_count + r.copy_svg_count) > 0) {
+        usageParts.push(`${r.download_png_count + r.download_svg_count + r.copy_svg_count} downloads`);
+      }
+      const usageSummary = usageParts.length > 0 ? usageParts.join(', ') : 'No usage yet';
+      
+      tr.innerHTML = `
+        <td>
+          <div class="customer-info">
+            <div class="customer-email">${r.email || 'No email'}</div>
+            ${r.full_name ? `<div class="customer-name">${r.full_name}</div>` : ''}
+          </div>
+        </td>
+        <td>${createdAt}</td>
+        <td>
+          <span class="plan-badge ${planClass}">${plan}</span>
+          ${r.billing_cycle ? `<div style="font-size:0.8em;color:#666;margin-top:2px;">${r.billing_cycle}</div>` : ''}
+        </td>
+        <td>
+          <div class="usage-summary">${usageSummary}</div>
+          ${r.total_usage_count > 0 ? `<div style="font-size:0.8em;color:#999;">Total: ${r.total_usage_count} actions</div>` : ''}
+        </td>
+        <td>
+          <div class="revenue-info">
+            ${estMonthly > 0 ? `<div class="monthly-revenue">$${estMonthly.toFixed(2)}/mo</div>` : ''}
+            ${estTotal > 0 ? `<div class="total-spend">$${estTotal.toFixed(2)} total</div>` : '<div class="total-spend">$0.00</div>'}
+          </div>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+    
+    if (filteredRows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#666;padding:40px;">No customers found</td></tr>';
+    }
   } catch (error) {
     console.error('Failed to load customers:', error);
     showAlert('Failed to load customers: ' + error.message, 'danger');

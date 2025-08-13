@@ -6,42 +6,140 @@
   <title>Admin Dashboard - Icon Search</title>
   <link rel="stylesheet" href="styles.css">
   <style>
-    .admin-container { max-width: 1200px; margin: 0 auto; padding: 20px; background: white; min-height: 100vh; }
-    .admin-header { text-align: center; margin-bottom: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; }
-    .admin-nav { display: flex; gap: 10px; justify-content: center; margin-bottom: 30px; }
-    .nav-btn { padding: 12px 24px; border: none; background: #007bff; color: white; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
-    .nav-btn.active { background: #0056b3; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .nav-btn:hover { background: #0056b3; transform: translateY(-1px); }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; margin: 0; background: #f5f7fa; }
+    .admin-container { max-width: 1400px; margin: 0 auto; padding: 20px; min-height: 100vh; }
+    .admin-header { text-align: center; margin-bottom: 30px; padding: 30px; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .admin-header h1 { margin: 0 0 10px 0; color: #2c3e50; font-size: 2.2em; font-weight: 600; }
+    .admin-header p { margin: 0; color: #7f8c8d; font-size: 1.1em; }
+    .admin-nav { display: flex; gap: 8px; justify-content: center; margin-bottom: 30px; flex-wrap: wrap; }
+    .nav-btn { padding: 14px 28px; border: none; background: #3498db; color: white; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 500; transition: all 0.3s; }
+    .nav-btn.active { background: #2980b9; box-shadow: 0 4px 12px rgba(41, 128, 185, 0.3); transform: translateY(-1px); }
+    .nav-btn:hover { background: #2980b9; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(52, 152, 219, 0.2); }
     
     .section { display: none; }
     .section.active { display: block; animation: fadeIn 0.3s ease-in; }
+    .section h2 { 
+      color: #2c3e50; 
+      font-size: 1.8em; 
+      font-weight: 600; 
+      margin-bottom: 25px; 
+      padding-bottom: 10px;
+      border-bottom: 2px solid #ecf0f1;
+    }
     
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     
-    .form-section { background: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 30px; }
-    .form-group { margin-bottom: 15px; }
-    .form-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #333; }
-    .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; transition: border-color 0.3s; }
-    .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: #007bff; outline: none; box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25); }
-    .form-group textarea { height: 80px; resize: vertical; }
+    .form-section { background: white; padding: 35px; border-radius: 12px; margin-bottom: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .form-section h3 { margin-top: 0; margin-bottom: 25px; color: #2c3e50; font-size: 1.4em; font-weight: 600; }
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; margin-bottom: 8px; font-weight: 600; color: #34495e; font-size: 14px; }
+    .form-group input, .form-group textarea, .form-group select { 
+      width: 100%; 
+      padding: 12px 16px; 
+      border: 2px solid #e1e8ed; 
+      border-radius: 8px; 
+      font-size: 14px; 
+      transition: all 0.3s ease; 
+      background: #fafbfc;
+      box-sizing: border-box;
+    }
+    .form-group input:focus, .form-group textarea:focus, .form-group select:focus { 
+      border-color: #3498db; 
+      outline: none; 
+      box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
+      background: white;
+    }
+    .form-group textarea { height: 100px; resize: vertical; }
     
-    .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin: 5px; font-size: 14px; transition: all 0.3s; }
-    .btn:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .btn-primary { background: #007bff; color: white; }
-    .btn-success { background: #28a745; color: white; }
-    .btn-danger { background: #dc3545; color: white; }
-    .btn-secondary { background: #6c757d; color: white; }
+    .btn { 
+      padding: 12px 24px; 
+      border: none; 
+      border-radius: 8px; 
+      cursor: pointer; 
+      margin: 8px 4px; 
+      font-size: 14px; 
+      font-weight: 500; 
+      transition: all 0.3s ease; 
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .btn-primary { background: #3498db; color: white; }
+    .btn-primary:hover { background: #2980b9; }
+    .btn-success { background: #27ae60; color: white; }
+    .btn-success:hover { background: #219a52; }
+    .btn-danger { background: #e74c3c; color: white; }
+    .btn-danger:hover { background: #c0392b; }
+    .btn-secondary { background: #95a5a6; color: white; }
+    .btn-secondary:hover { background: #7f8c8d; }
     
-    .table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    .table th, .table td { border: 1px solid #e9ecef; padding: 12px; text-align: left; }
-    .table th { background-color: #f8f9fa; font-weight: bold; color: #495057; }
-    .table tbody tr:hover { background-color: #f8f9fa; }
+    .table { 
+      width: 100%; 
+      border-collapse: collapse; 
+      margin-top: 20px; 
+      background: white; 
+      border-radius: 12px; 
+      overflow: hidden; 
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+    }
+    .table th, .table td { 
+      border: none; 
+      border-bottom: 1px solid #ecf0f1; 
+      padding: 16px; 
+      text-align: left; 
+    }
+    .table th { 
+      background-color: #34495e; 
+      font-weight: 600; 
+      color: white; 
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .table tbody tr:hover { 
+      background-color: #f8f9fa; 
+      transition: background-color 0.2s ease;
+    }
     
-    .form-row { display: flex; gap: 15px; }
+    .table-wrapper { overflow-x: auto; border-radius: 8px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+    .stats-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+    .stats-card h4 { margin: 0 0 10px 0; color: #666; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-number { font-size: 28px; font-weight: bold; color: #007bff; margin: 0; }
+    
+    .customer-info { display: flex; flex-direction: column; gap: 2px; }
+    .customer-email { font-weight: 600; color: #333; }
+    .customer-name { font-size: 0.9em; color: #666; }
+    .plan-badge { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 0.8em; font-weight: 500; text-transform: uppercase; }
+    .plan-free { background: #e9ecef; color: #495057; }
+    .plan-pro { background: #d4edda; color: #155724; }
+    .plan-enterprise { background: #cce7ff; color: #004085; }
+    .usage-summary { font-size: 0.9em; color: #666; line-height: 1.4; }
+    .revenue-info { display: flex; flex-direction: column; gap: 2px; }
+    .monthly-revenue { font-weight: 600; color: #28a745; }
+    .total-spend { font-size: 0.9em; color: #666; }
+    
+    .form-row { display: flex; gap: 25px; margin-bottom: 10px; }
     .form-col { flex: 1; }
     
-    .checkbox-group { display: flex; align-items: center; gap: 10px; margin-top: 5px; }
-    .checkbox-group input[type="checkbox"] { width: auto; }
+    .checkbox-group { 
+      display: flex; 
+      align-items: center; 
+      gap: 12px; 
+      margin-top: 8px; 
+      padding: 8px 0;
+    }
+    .checkbox-group input[type="checkbox"] { 
+      width: auto; 
+      margin: 0;
+      transform: scale(1.1);
+    }
+    .checkbox-group label {
+      margin-bottom: 0 !important;
+      font-weight: 500;
+      cursor: pointer;
+    }
     
     .alert { padding: 15px; margin: 10px 0; border-radius: 5px; position: relative; animation: slideInDown 0.3s ease-out; }
     .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
@@ -82,10 +180,10 @@
 
     <!-- Navigation -->
     <div class="admin-nav">
-      <button class="nav-btn active" onclick="showSection('plans')">Subscription Plans</button>
-      <button class="nav-btn" onclick="showSection('discounts')">Discount Codes</button>
-      <button class="nav-btn" onclick="showSection('customers')">Customers</button>
-      <button class="nav-btn" onclick="showSection('analytics')">Analytics</button>
+      <button class="nav-btn active" data-section="plans">Subscription Plans</button>
+      <button class="nav-btn" data-section="discounts">Discount Codes</button>
+      <button class="nav-btn" data-section="customers">Customers</button>
+      <button class="nav-btn" data-section="analytics">Analytics</button>
     </div>
 
     <!-- Plans Management Section -->
@@ -195,7 +293,7 @@
 
           <div class="form-group">
             <button type="submit" class="btn btn-primary">Save Plan</button>
-            <button type="button" class="btn btn-secondary" onclick="resetPlanForm()">Cancel</button>
+            <button type="button" class="btn btn-secondary" data-action="reset-plan-form">Cancel</button>
           </div>
         </form>
       </div>
@@ -229,31 +327,70 @@
       <div class="form-section">
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
           <input id="customer-filter" type="text" placeholder="Filter by email..." style="flex:1; max-width: 360px;">
-          <button class="btn btn-secondary" onclick="loadCustomers()">Refresh</button>
+          <button class="btn btn-secondary" data-action="load-customers">Refresh</button>
         </div>
       </div>
       <div class="customers-list">
-        <h3>All Customers</h3>
-        <table class="table" id="customers-table">
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Profile Created</th>
-              <th>Current Plan</th>
-              <th>Billing</th>
-              <th>Est. Monthly $</th>
-              <th>Generations</th>
-              <th>Downloads (PNG)</th>
-              <th>Downloads (SVG)</th>
-              <th>Copies (SVG)</th>
-              <th>Total Usage</th>
-              <th>Est. Total Spend</th>
-            </tr>
-          </thead>
-          <tbody id="customers-tbody">
-            <!-- Customers will be loaded here -->
-          </tbody>
-        </table>
+        <h3>Customer Overview</h3>
+        <div id="customers-summary" class="stats-grid" style="margin-bottom: 20px;">
+          <div class="stats-card">
+            <h4>Total Customers</h4>
+            <p class="stat-number" id="total-customers">-</p>
+          </div>
+          <div class="stats-card">
+            <h4>Active This Month</h4>
+            <p class="stat-number" id="active-customers">-</p>
+          </div>
+          <div class="stats-card">
+            <h4>With Profiles</h4>
+            <p class="stat-number" id="customers-with-profiles">-</p>
+          </div>
+          <div class="stats-card">
+            <h4>Admin Users</h4>
+            <p class="stat-number" id="admin-users">-</p>
+          </div>
+          <div class="stats-card">
+            <h4>Total Generations</h4>
+            <p class="stat-number" id="total-generations">-</p>
+          </div>
+          <div class="stats-card">
+            <h4>Total Downloads</h4>
+            <p class="stat-number" id="total-downloads">-</p>
+          </div>
+          <div class="stats-card">
+            <h4>PNG Downloads</h4>
+            <p class="stat-number" id="png-downloads">-</p>
+          </div>
+          <div class="stats-card">
+            <h4>SVG Downloads</h4>
+            <p class="stat-number" id="svg-downloads">-</p>
+          </div>
+          <div class="stats-card">
+            <h4>Copy SVG Actions</h4>
+            <p class="stat-number" id="copy-svg-actions">-</p>
+          </div>
+          <div class="stats-card">
+            <h4>Est. Monthly Revenue</h4>
+            <p class="stat-number" id="estimated-revenue">$-</p>
+          </div>
+        </div>
+        
+        <div class="table-wrapper">
+          <table class="table" id="customers-table">
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Joined</th>
+                <th>Plan</th>
+                <th>Usage Summary</th>
+                <th>Revenue</th>
+              </tr>
+            </thead>
+            <tbody id="customers-tbody">
+              <!-- Customers will be loaded here -->
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -330,7 +467,7 @@
 
           <div class="form-group">
             <button type="submit" class="btn btn-primary">Save Discount Code</button>
-            <button type="button" class="btn btn-secondary" onclick="resetDiscountForm()">Cancel</button>
+            <button type="button" class="btn btn-secondary" data-action="reset-discount-form">Cancel</button>
           </div>
         </form>
       </div>

@@ -64,3 +64,5 @@ If Supabase is configured, the app logs searches and generated icons:
 - `/server.js`: Single-file backend server
 - `/schema.sql`: Database schema for optional Supabase integration
 - `/migrations/`: Database migration files
+- you can acsses the supabase database using node js insted of supabase mcp
+- when needed create sql files in '/Users/yedidya/Desktop/icon_search_app/migrations' folder and update the main tracking schema in '/Users/yedidya/Desktop/icon_search_app/schema.sql'

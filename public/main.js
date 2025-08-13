@@ -55,7 +55,35 @@ document.addEventListener('DOMContentLoaded', () => {
       const limit = 100;
       // Use local proxy for Iconify search to avoid CSP/CORS issues and improve reliability
       const url = `/api/iconify-search?query=${encodeURIComponent(query)}&limit=${limit}`;
-      const response = await fetch(url, { cache: 'no-store' });
+      
+      // Add authorization header if user is logged in
+      const headers = { 'cache-control': 'no-store' };
+      if (supabaseClient) {
+        try {
+          const { data: { session } } = await supabaseClient.auth.getSession();
+          if (session?.access_token) {
+            headers.Authorization = `Bearer ${session.access_token}`;
+          }
+        } catch (e) {
+          console.warn('Failed to get session for API request:', e);
+        }
+      }
+      
+      const response = await fetch(url, { headers });
+      
+      // Handle authentication errors
+      if (response.status === 401) {
+        const errorData = await response.json().catch(() => ({}));
+        console.warn('Authentication required for icon search');
+        if (errorData.redirect) {
+          const current = new URL(window.location.href);
+          window.location.href = `${errorData.redirect}?redirect=${encodeURIComponent(current.pathname)}`;
+        } else {
+          window.location.href = `/login.html?redirect=${encodeURIComponent(window.location.pathname)}`;
+        }
+        return;
+      }
+      
       const data = await response.json();
       lastData = data; // cache results
       

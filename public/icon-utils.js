@@ -1,6 +1,40 @@
 // Unified icon utilities for consistent download and conversion across the app
 
 class IconUtils {
+  // Helper: Make authenticated fetch request
+  static async authenticatedFetch(url, options = {}) {
+    const headers = { ...options.headers };
+    
+    // Add authorization header if user is logged in
+    if (window.supabaseClient || window.supabaseAuthClient) {
+      const client = window.supabaseClient || window.supabaseAuthClient;
+      try {
+        const { data: { session } } = await client.auth.getSession();
+        if (session?.access_token) {
+          headers.Authorization = `Bearer ${session.access_token}`;
+        }
+      } catch (e) {
+        console.warn('Failed to get session for API request:', e);
+      }
+    }
+    
+    const response = await fetch(url, { ...options, headers });
+    
+    // Handle authentication errors
+    if (response.status === 401) {
+      const errorData = await response.json().catch(() => ({}));
+      console.warn('Authentication required for API access');
+      if (errorData.redirect) {
+        const current = new URL(window.location.href);
+        window.location.href = `${errorData.redirect}?redirect=${encodeURIComponent(current.pathname)}`;
+      } else {
+        window.location.href = `/login.html?redirect=${encodeURIComponent(window.location.pathname)}`;
+      }
+      throw new Error('Authentication required');
+    }
+    
+    return response;
+  }
   // Cache processed results per original URL + settings to avoid double-processing
   static processedCache = new Map();
   static inflightMap = new Map();
@@ -42,7 +76,7 @@ class IconUtils {
 
       const doFetch = async () => {
         console.log('Calling background removal API...');
-        const response = await fetch(`/api/remove-bg?${params.toString()}`);
+        const response = await this.authenticatedFetch(`/api/remove-bg?${params.toString()}`);
         if (!response.ok) {
           console.warn('Background removal failed, using original image');
           return imageUrl;
@@ -320,7 +354,7 @@ class IconUtils {
       invert: 'false'
     });
     
-    const response = await fetch(`/api/vectorize?${params.toString()}`);
+    const response = await this.authenticatedFetch(`/api/vectorize?${params.toString()}`);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return await response.text();
   }
