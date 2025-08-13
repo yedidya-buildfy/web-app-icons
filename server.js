@@ -71,6 +71,8 @@ const publicDir = path.join(__dirname, 'public');
 function serveStatic(req, res) {
   let pathname = req.url.split('?')[0];
   if (pathname === '/' || pathname === '') pathname = '/index.html';
+  // Handle auth callback route
+  if (pathname === '/auth/callback') pathname = '/auth/callback.html';
   const filePath = path.join(publicDir, pathname);
   fs.readFile(filePath, (err, data) => {
     if (err) {
