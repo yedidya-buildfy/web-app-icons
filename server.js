@@ -607,43 +607,27 @@ function validateGenerateRequest(body) {
   return errors;
 }
 
-// API Key Authentication System
-const API_KEYS = new Map();
-const API_USAGE = new Map();
-const API_RATE_LIMITS = new Map();
+// Production API Key Authentication System using Supabase
+const bcrypt = require('bcrypt');
 
-// Load API keys from environment or config
-function loadApiKeys() {
-  // For development, load from environment variables
-  const keysString = process.env.API_KEYS || '';
-  if (keysString) {
-    keysString.split(',').forEach(key => {
-      const trimmedKey = key.trim();
-      if (trimmedKey) {
-        API_KEYS.set(trimmedKey, {
-          name: `key-${trimmedKey.slice(0, 8)}`,
-          created: new Date(),
-          active: true
-        });
-      }
-    });
+// Cache for validated API keys (1 minute TTL)
+const API_KEY_CACHE = new Map();
+const CACHE_TTL = 60 * 1000; // 1 minute
+
+// Initialize API key system
+function initializeApiKeySystem() {
+  if (!supabase) {
+    console.warn('⚠️ API key system requires Supabase configuration');
+    return;
   }
-  
-  // Default development key if none configured
-  if (API_KEYS.size === 0 && process.env.NODE_ENV !== 'production') {
-    const devKey = 'dev-key-12345';
-    API_KEYS.set(devKey, {
-      name: 'Development Key',
-      created: new Date(),
-      active: true
-    });
-    console.log(`⚠️  Using development API key: ${devKey}`);
-  }
-  
-  console.log(`🔑 Loaded ${API_KEYS.size} API key(s)`);
+  console.log('🔑 Production API key system initialized');
 }
 
-function validateApiKey(req) {
+async function validateApiKey(req) {
+  if (!supabase) {
+    return { valid: false, error: 'Server configuration error: Database unavailable' };
+  }
+
   const authHeader = req.headers.authorization;
   const apiKeyHeader = req.headers['x-api-key'];
   
@@ -659,77 +643,140 @@ function validateApiKey(req) {
   if (!apiKey) {
     return { valid: false, error: 'Missing API key. Provide via Authorization: Bearer <key> or X-API-Key: <key> header' };
   }
-  
-  const keyInfo = API_KEYS.get(apiKey);
-  if (!keyInfo || !keyInfo.active) {
-    return { valid: false, error: 'Invalid or inactive API key' };
-  }
-  
-  // Rate limiting check
-  const now = Date.now();
-  const windowMs = 60 * 1000; // 1 minute window
-  const maxRequests = 100; // 100 requests per minute
-  
-  if (!API_RATE_LIMITS.has(apiKey)) {
-    API_RATE_LIMITS.set(apiKey, { count: 0, windowStart: now });
-  }
-  
-  const rateLimitInfo = API_RATE_LIMITS.get(apiKey);
-  
-  // Reset window if expired
-  if (now - rateLimitInfo.windowStart > windowMs) {
-    rateLimitInfo.count = 0;
-    rateLimitInfo.windowStart = now;
-  }
-  
-  if (rateLimitInfo.count >= maxRequests) {
-    return { valid: false, error: 'Rate limit exceeded. Maximum 100 requests per minute.' };
-  }
-  
-  rateLimitInfo.count++;
-  
-  // Track usage
-  if (!API_USAGE.has(apiKey)) {
-    API_USAGE.set(apiKey, { 
-      totalRequests: 0, 
-      firstUsed: now, 
-      lastUsed: now,
-      endpoints: new Map()
-    });
-  }
-  
-  const usage = API_USAGE.get(apiKey);
-  usage.totalRequests++;
-  usage.lastUsed = now;
-  
-  return { valid: true, keyInfo, apiKey };
-}
 
-function trackEndpointUsage(apiKey, endpoint) {
-  const usage = API_USAGE.get(apiKey);
-  if (usage) {
-    if (!usage.endpoints.has(endpoint)) {
-      usage.endpoints.set(endpoint, 0);
+  // Check cache first
+  const cacheKey = `api_key_${apiKey}`;
+  const cached = API_KEY_CACHE.get(cacheKey);
+  if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+    return { valid: true, keyInfo: cached.keyInfo, apiKeyId: cached.apiKeyId };
+  }
+
+  try {
+    // Parse API key format: ak_prefix_actualkey
+    const keyParts = apiKey.split('_');
+    if (keyParts.length < 3 || keyParts[0] !== 'ak') {
+      return { valid: false, error: 'Invalid API key format' };
     }
-    usage.endpoints.set(endpoint, usage.endpoints.get(endpoint) + 1);
+    
+    const prefix = `${keyParts[0]}_${keyParts[1]}`;
+    const rawKey = keyParts.slice(2).join('_');
+
+    // Find API key by prefix
+    const { data: keyRecord, error: keyError } = await supabase
+      .from('api_keys')
+      .select('*')
+      .eq('key_prefix', prefix)
+      .eq('is_active', true)
+      .single();
+
+    if (keyError || !keyRecord) {
+      return { valid: false, error: 'Invalid or inactive API key' };
+    }
+
+    // Check if key has expired
+    if (keyRecord.expires_at && new Date(keyRecord.expires_at) < new Date()) {
+      return { valid: false, error: 'API key has expired' };
+    }
+
+    // Verify the key hash (using bcrypt)
+    const isValidKey = await bcrypt.compare(rawKey, keyRecord.key_hash);
+    if (!isValidKey) {
+      return { valid: false, error: 'Invalid API key' };
+    }
+
+    // Check rate limits using database function
+    const { data: rateLimitCheck } = await supabase
+      .rpc('check_api_key_rate_limit', {
+        p_api_key_id: keyRecord.id,
+        p_check_type: 'minute'
+      });
+
+    if (rateLimitCheck && !rateLimitCheck.allowed) {
+      return { 
+        valid: false, 
+        error: `Rate limit exceeded. ${rateLimitCheck.remaining} requests remaining this minute.`,
+        rateLimitInfo: rateLimitCheck
+      };
+    }
+
+    // Cache the validated key
+    const keyInfo = {
+      id: keyRecord.id,
+      name: keyRecord.name,
+      prefix: keyRecord.key_prefix,
+      permissions: {
+        canSearch: keyRecord.can_search,
+        canGenerate: keyRecord.can_generate,
+        canDownload: keyRecord.can_download
+      },
+      limits: {
+        perMinute: keyRecord.rate_limit_per_minute,
+        daily: keyRecord.daily_limit,
+        monthly: keyRecord.monthly_limit
+      }
+    };
+
+    API_KEY_CACHE.set(cacheKey, {
+      keyInfo,
+      apiKeyId: keyRecord.id,
+      timestamp: Date.now()
+    });
+
+    return { valid: true, keyInfo, apiKeyId: keyRecord.id };
+
+  } catch (error) {
+    console.error('API key validation error:', error);
+    return { valid: false, error: 'Authentication service unavailable' };
   }
 }
 
-function requireApiKey(req, res, endpoint) {
-  const validation = validateApiKey(req);
+async function trackEndpointUsage(apiKeyId, endpoint, method = 'POST', statusCode = 200, responseTime = null) {
+  if (!supabase || !apiKeyId) {
+    return;
+  }
+
+  try {
+    await supabase.rpc('track_api_key_usage', {
+      p_api_key_id: apiKeyId,
+      p_endpoint: endpoint,
+      p_method: method,
+      p_status_code: statusCode,
+      p_response_time_ms: responseTime
+    });
+  } catch (error) {
+    console.error('Failed to track API usage:', error.message);
+  }
+}
+
+async function requireApiKey(req, res, endpoint) {
+  const validation = await validateApiKey(req);
   
   if (!validation.valid) {
     return sendError(res, 401, validation.error);
   }
+
+  // Check endpoint-specific permissions
+  const permissions = validation.keyInfo.permissions;
+  if (endpoint.includes('search') && !permissions.canSearch) {
+    return sendError(res, 403, 'API key does not have search permission');
+  }
+  if (endpoint.includes('generate') && !permissions.canGenerate) {
+    return sendError(res, 403, 'API key does not have generation permission');
+  }
+  if (endpoint.includes('download') && !permissions.canDownload) {
+    return sendError(res, 403, 'API key does not have download permission');
+  }
+
+  // Track usage asynchronously (don't wait for it)
+  trackEndpointUsage(validation.apiKeyId, endpoint, req.method).catch(console.error);
   
-  trackEndpointUsage(validation.apiKey, endpoint);
-  console.log(`🔑 API call: ${endpoint} by ${validation.keyInfo.name}`);
+  console.log(`🔑 API call: ${endpoint} by ${validation.keyInfo.name} (${validation.keyInfo.prefix})`);
   
   return validation;
 }
 
-// Initialize API keys
-loadApiKeys();
+// Initialize API key system
+initializeApiKeySystem();
 
 // Helper function to fetch SVG content
 async function fetchSvgContent(url) {
@@ -840,7 +887,7 @@ function applyIconFilters(icons, filters) {
 
 async function handleIconSearch(req, res) {
   // Require API key for MCP usage
-  const auth = requireApiKey(req, res, 'search');
+  const auth = await requireApiKey(req, res, 'search');
   if (!auth) return; // Error already sent
   
   try {
@@ -963,7 +1010,7 @@ async function handleIconSearch(req, res) {
 
 async function handleIconGenerate(req, res) {
   // Require API key for MCP usage
-  const auth = requireApiKey(req, res, 'generate');
+  const auth = await requireApiKey(req, res, 'generate');
   if (!auth) return; // Error already sent
   
   if (!RUNWARE_API_KEY) {
@@ -1126,7 +1173,7 @@ async function handleIconGenerate(req, res) {
 
 async function handleIconDetails(req, res) {
   // Require API key for MCP usage
-  const auth = requireApiKey(req, res, 'details');
+  const auth = await requireApiKey(req, res, 'details');
   if (!auth) return; // Error already sent
   
   try {
@@ -1228,30 +1275,70 @@ async function handleIconDetails(req, res) {
 
 // API Usage tracking endpoint
 async function handleApiUsage(req, res) {
-  const auth = requireApiKey(req, res, 'usage');
+  const auth = await requireApiKey(req, res, 'usage');
   if (!auth) return;
   
-  const usage = API_USAGE.get(auth.apiKey);
-  const rateLimitInfo = API_RATE_LIMITS.get(auth.apiKey);
-  
-  const response = {
-    success: true,
-    apiKey: auth.keyInfo.name,
-    usage: {
-      totalRequests: usage?.totalRequests || 0,
-      firstUsed: usage?.firstUsed || null,
-      lastUsed: usage?.lastUsed || null,
-      endpoints: usage?.endpoints ? Object.fromEntries(usage.endpoints) : {},
-      rateLimit: {
-        current: rateLimitInfo?.count || 0,
-        max: 100,
-        windowMs: 60000,
-        resetsAt: rateLimitInfo ? new Date(rateLimitInfo.windowStart + 60000) : null
+  try {
+    // Get current usage stats from database
+    const { data: dailyUsage, error: dailyError } = await supabase
+      .from('api_key_daily_usage')
+      .select('*')
+      .eq('api_key_id', auth.apiKeyId)
+      .order('usage_date', { ascending: false })
+      .limit(30); // Last 30 days
+
+    const { data: hourlyUsage, error: hourlyError } = await supabase
+      .from('api_key_usage')
+      .select('*')
+      .eq('api_key_id', auth.apiKeyId)
+      .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .order('date_hour', { ascending: false });
+
+    // Get rate limit info
+    const { data: rateLimitInfo } = await supabase
+      .rpc('check_api_key_rate_limit', {
+        p_api_key_id: auth.apiKeyId,
+        p_check_type: 'minute'
+      });
+
+    const { data: dailyRateLimit } = await supabase
+      .rpc('check_api_key_rate_limit', {
+        p_api_key_id: auth.apiKeyId,
+        p_check_type: 'daily'
+      });
+
+    const todayUsage = dailyUsage?.find(d => d.usage_date === new Date().toISOString().split('T')[0]);
+    
+    const response = {
+      success: true,
+      apiKey: {
+        name: auth.keyInfo.name,
+        prefix: auth.keyInfo.prefix,
+        permissions: auth.keyInfo.permissions,
+        limits: auth.keyInfo.limits
+      },
+      usage: {
+        today: {
+          total: todayUsage?.total_requests || 0,
+          search: todayUsage?.search_requests || 0,
+          generate: todayUsage?.generate_requests || 0,
+          download: todayUsage?.download_requests || 0,
+          errors: todayUsage?.error_count || 0
+        },
+        last30Days: dailyUsage || [],
+        last24Hours: hourlyUsage || []
+      },
+      rateLimits: {
+        perMinute: rateLimitInfo || { current_usage: 0, limit: auth.keyInfo.limits.perMinute, remaining: auth.keyInfo.limits.perMinute },
+        daily: dailyRateLimit || { current_usage: 0, limit: auth.keyInfo.limits.daily, remaining: auth.keyInfo.limits.daily }
       }
-    }
-  };
-  
-  sendJson(res, 200, response);
+    };
+    
+    sendJson(res, 200, response);
+  } catch (error) {
+    console.error('Failed to get API usage:', error);
+    sendError(res, 500, 'Failed to retrieve usage statistics');
+  }
 }
 
 async function handleIconDownload(req, res) {

@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Key Management - Icon Search App</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="env.js"></script>
+    <script src="auth.js"></script>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; 
+            margin: 0; 
+            background: #f5f7fa; 
+        }
+        .admin-container { 
+            max-width: 1400px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            min-height: 100vh; 
+        }
+        .admin-header { 
+            text-align: center; 
+            margin-bottom: 30px; 
+            padding: 30px; 
+            background: white; 
+            border-radius: 12px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+        }
+        .admin-header h1 { 
+            margin: 0 0 10px 0; 
+            color: #2c3e50; 
+            font-size: 2.2em; 
+            font-weight: 600; 
+        }
+        .admin-header p { 
+            margin: 0; 
+            color: #7f8c8d; 
+            font-size: 1.1em; 
+        }
+        .nav-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .nav-section h2 {
+            margin: 0;
+            color: #2c3e50;
+            font-size: 1.5em;
+        }
+        .nav-links {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .nav-links a, .nav-links button {
+            color: #3498db;
+            text-decoration: none;
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: all 0.3s;
+            border: none;
+            background: none;
+            cursor: pointer;
+        }
+        .nav-links a:hover, .nav-links button:hover {
+            background: #ecf0f1;
+            color: #2980b9;
+        }
+        .btn-primary {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-1px);
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 10px 0;
+        }
+        .stat-label {
+            color: #7f8c8d;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .table-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid #ecf0f1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .table-header h3 {
+            margin: 0;
+            color: #2c3e50;
+            font-size: 1.3em;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 15px 25px;
+            text-align: left;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+        .badge-active {
+            background: #d5f4e6;
+            color: #2d7d32;
+        }
+        .badge-inactive {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .badge-permission {
+            background: #e3f2fd;
+            color: #1565c0;
+            margin: 2px;
+        }
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 0.8em;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            margin: 0 2px;
+            transition: all 0.3s;
+        }
+        .btn-view {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+        .btn-view:hover {
+            background: #bbdefb;
+        }
+        .btn-revoke {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .btn-revoke:hover {
+            background: #ffcdd2;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+        .modal-title {
+            margin: 0;
+            color: #2c3e50;
+            font-size: 1.5em;
+        }
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #7f8c8d;
+            float: right;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 0.9em;
+        }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+            box-sizing: border-box;
+        }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+            border-color: #3498db;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .form-section {
+            border-top: 1px solid #ecf0f1;
+            padding-top: 20px;
+            margin-top: 20px;
+        }
+        .form-section h4 {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+        }
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .checkbox-item input[type="checkbox"] {
+            width: auto;
+        }
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 30px;
+        }
+        .btn-secondary {
+            background: #ecf0f1;
+            color: #2c3e50;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-secondary:hover {
+            background: #d5dbdb;
+        }
+        .login-required {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            text-align: center;
+        }
+        .login-box {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .api-key-display {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: monospace;
+            word-break: break-all;
+            position: relative;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 12px;
+            border-radius: 6px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+        }
+        .hidden { display: none !important; }
+        .error { color: #c62828; }
+        .success { color: #2d7d32; }
+
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            th, td {
+                padding: 10px 15px;
+                font-size: 0.9em;
+            }
+            .nav-section {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="hidden">
+        <div class="admin-container">
+            <!-- Header -->
+            <div class="admin-header">
+                <h1>🔑 API Key Management</h1>
+                <p>Manage API keys and monitor usage for your icon search service</p>
+            </div>
+
+            <!-- Navigation -->
+            <div class="nav-section">
+                <h2>API Keys Dashboard</h2>
+                <div class="nav-links">
+                    <span id="userDisplay"></span>
+                    <button id="logoutBtn">Logout</button>
+                    <a href="admin.html">← Back to Admin</a>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number" id="totalKeysCount">0</div>
+                    <div class="stat-label">Total API Keys</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="activeKeysCount">0</div>
+                    <div class="stat-label">Active Keys</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="todayRequestsCount">0</div>
+                    <div class="stat-label">Requests Today</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="recentlyUsedCount">0</div>
+                    <div class="stat-label">Used Last 24h</div>
+                </div>
+            </div>
+
+            <!-- API Keys Table -->
+            <div class="table-container">
+                <div class="table-header">
+                    <h3>API Keys</h3>
+                    <button id="createKeyBtn" class="btn-primary">Create New API Key</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Key Info</th>
+                            <th>Owner</th>
+                            <th>Status</th>
+                            <th>Usage</th>
+                            <th>Limits</th>
+                            <th>Permissions</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="apiKeysTable">
+                        <tr>
+                            <td colspan="7" style="text-align: center; color: #7f8c8d;">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Required -->
+    <div id="loginRequired" class="login-required hidden">
+        <div class="login-box">
+            <h2>Admin Access Required</h2>
+            <p>Please log in with admin credentials to manage API keys</p>
+            <br>
+            <a href="admin.html" class="btn-primary">Go to Admin Login</a>
+        </div>
+    </div>
+
+    <!-- Create API Key Modal -->
+    <div id="createKeyModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Create New API Key</h3>
+                <button class="close-btn" id="cancelCreateBtn">&times;</button>
+            </div>
+            
+            <form id="createKeyForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Key Name *</label>
+                        <input type="text" id="keyName" required placeholder="Production App Key">
+                    </div>
+                    <div class="form-group">
+                        <label>Owner Email *</label>
+                        <input type="email" id="ownerEmail" required placeholder="user@example.com">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Owner Name</label>
+                        <input type="text" id="ownerName" placeholder="John Doe">
+                    </div>
+                    <div class="form-group">
+                        <label>Expires At</label>
+                        <input type="datetime-local" id="expiresAt">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="description" rows="2" placeholder="API key for production MCP integration"></textarea>
+                </div>
+
+                <div class="form-section">
+                    <h4>Rate Limits</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Per Minute</label>
+                            <input type="number" id="rateLimit" value="100" min="1" max="1000">
+                        </div>
+                        <div class="form-group">
+                            <label>Daily</label>
+                            <input type="number" id="dailyLimit" value="10000" min="1" max="100000">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Monthly</label>
+                        <input type="number" id="monthlyLimit" value="300000" min="1" max="10000000">
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h4>Permissions</h4>
+                    <div class="checkbox-group">
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="canSearch" checked>
+                            <label for="canSearch">Can Search Icons</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="canGenerate" checked>
+                            <label for="canGenerate">Can Generate Icons</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="canDownload" checked>
+                            <label for="canDownload">Can Download Icons</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" id="cancelCreateBtn2" class="btn-secondary">Cancel</button>
+                    <button type="submit" class="btn-primary">Create API Key</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- API Key Created Modal -->
+    <div id="keyCreatedModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">✅ API Key Created Successfully</h3>
+                <button class="close-btn" id="closeKeyCreatedBtn">&times;</button>
+            </div>
+            
+            <p>Your new API key has been created. <strong>This is the only time it will be displayed.</strong></p>
+            
+            <div class="api-key-display">
+                <code id="newApiKey"></code>
+                <button id="copyApiKey" class="copy-btn">Copy</button>
+            </div>
+            
+            <div class="warning">
+                ⚠️ Store this key securely! You won't be able to see it again.
+            </div>
+            
+            <div class="form-actions">
+                <button id="closeKeyCreatedBtn2" class="btn-primary">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="api-admin.js"></script>
+</body>
+</html>

@@ -625,8 +625,12 @@ async function loadCustomers() {
     const customersWithProfiles = rows.filter(r => r.full_name && r.full_name.trim() !== '').length;
     const adminUsers = rows.filter(r => r.is_super_admin === true).length;
     
-    // Usage statistics
-    const totalGenerations = rows.reduce((sum, r) => sum + (r.generation_count || 0), 0);
+    // Usage statistics - NEW SPLIT METRICS
+    const totalIconsGenerated = rows.reduce((sum, r) => sum + (r.icons_generated || 0), 0);
+    const totalUniqueIconsUsed = rows.reduce((sum, r) => sum + (r.unique_icons_used || 0), 0);
+    const totalSearches = rows.reduce((sum, r) => sum + (r.total_searches || 0), 0);
+    
+    // Keep old metrics for backwards compatibility  
     const totalPngDownloads = rows.reduce((sum, r) => sum + (r.download_png_count || 0), 0);
     const totalSvgDownloads = rows.reduce((sum, r) => sum + (r.download_svg_count || 0), 0);
     const totalCopySvg = rows.reduce((sum, r) => sum + (r.copy_svg_count || 0), 0);
@@ -640,7 +644,8 @@ async function loadCustomers() {
     document.getElementById('active-customers').textContent = activeCustomers;
     document.getElementById('customers-with-profiles').textContent = customersWithProfiles;
     document.getElementById('admin-users').textContent = adminUsers;
-    document.getElementById('total-generations').textContent = totalGenerations.toLocaleString();
+    document.getElementById('total-generations').textContent = totalIconsGenerated.toLocaleString();
+    document.getElementById('unique-icons-used').textContent = totalUniqueIconsUsed.toLocaleString();
     document.getElementById('total-downloads').textContent = totalDownloads.toLocaleString();
     document.getElementById('png-downloads').textContent = totalPngDownloads.toLocaleString();
     document.getElementById('svg-downloads').textContent = totalSvgDownloads.toLocaleString();
