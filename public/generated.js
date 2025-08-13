@@ -7,7 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const colorsInput = document.getElementById('filterColors');
   const backgroundInput = document.getElementById('filterBackground');
 
-  const client = window.supabaseAuthClient || (typeof supabase !== 'undefined' ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null);
+  // Create fresh anonymous client to ensure no user filtering
+  const client = typeof supabase !== 'undefined' ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
   function normalize(str) { return (str || '').toString().trim(); }
   function logInfo(msg){ console.log(`ℹ️ ${msg}`);} function logSuccess(msg){ console.log(`✅ ${msg}`);} function logWarning(msg){ console.warn(`⚠️ ${msg}`);} function logError(msg){ console.error(`❌ ${msg}`);} 

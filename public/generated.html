@@ -20,13 +20,8 @@
     <script src="/icon-utils.js" defer></script>
     <!-- Page script -->
     <script src="/generated.js" defer></script>
-    <script>
-      document.addEventListener('DOMContentLoaded', () => {
-        if (window.requireAuth) window.requireAuth();
-      });
-    </script>
   </head>
-  <body>
+  <body data-auth-optional="true">
     <main class="container">
       <nav class="app-nav">
         <a href="/" class="nav-link">Icon Search</a>
