@@ -45,7 +45,7 @@ function setSecurityHeaders(res) {
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-Frame-Options', 'DENY');
   // Allow connections to Iconify API/CDN for free stock icon search and fetching
-  res.setHeader('Content-Security-Policy', "default-src 'self' blob:; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.iconify.design https://cdn.jsdelivr.net/npm/@supabase/supabase-js; style-src 'self' 'unsafe-inline'; connect-src 'self' blob: https://api.runware.ai https://kfeekskddfyyosyyplxd.supabase.co https://api.iconify.design https://cdn.jsdelivr.net https://code.iconify.design; frame-ancestors 'none';");
+  res.setHeader('Content-Security-Policy', "default-src 'self' blob:; img-src 'self' data: blob: https://api.iconify.design https://im.runware.ai https://api.runware.ai; script-src 'self' https://cdn.jsdelivr.net https://code.iconify.design; style-src 'self'; connect-src 'self' blob: https://api.runware.ai https://kfeekskddfyyosyyplxd.supabase.co https://api.iconify.design https://cdn.jsdelivr.net https://code.iconify.design; frame-ancestors 'none';");
 }
 
 // Removed Aicon-specific headers
@@ -86,7 +86,19 @@ function serveStatic(req, res) {
 function isPrivateHost(hostname) {
   if (!hostname) return true;
   const lower = hostname.toLowerCase();
-  if (lower === 'localhost' || lower === '127.0.0.1') return true;
+  
+  // Block localhost variants
+  if (lower === 'localhost' || lower === '127.0.0.1' || lower === '0.0.0.0') return true;
+  
+  // Block private IP ranges
+  if (lower.match(/^10\.|^172\.(1[6-9]|2\d|3[01])\.|^192\.168\./)) return true;
+  
+  // Block link-local addresses
+  if (lower.match(/^169\.254\./)) return true;
+  
+  // Block loopback IPv6
+  if (lower === '::1' || lower === 'localhost6') return true;
+  
   if (ALLOWED_IMAGE_HOSTS.has(lower)) return false;
   return true; // default deny unless allowed list
 }
@@ -420,7 +432,14 @@ async function handleVectorize(req, res) {
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', (chunk) => { body += chunk; if (body.length > 1e6) req.destroy(); });
+    const maxSize = 1e5; // 100KB limit for JSON requests
+    req.on('data', (chunk) => { 
+      body += chunk; 
+      if (body.length > maxSize) {
+        req.destroy();
+        reject(new Error('Request too large'));
+      }
+    });
     req.on('end', () => {
       try { resolve(JSON.parse(body || '[]')); } catch (e) { reject(e); }
     });
