@@ -66,3 +66,4 @@ If Supabase is configured, the app logs searches and generated icons:
 - `/migrations/`: Database migration files
 - you can acsses the supabase database using node js insted of supabase mcp
 - when needed create sql files in '/Users/yedidya/Desktop/icon_search_app/migrations' folder and update the main tracking schema in '/Users/yedidya/Desktop/icon_search_app/schema.sql'
+- do not try to run migretion, in end of the massge tell me and i will run it

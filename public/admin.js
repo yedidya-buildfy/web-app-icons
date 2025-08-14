@@ -23,6 +23,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Check if user is authenticated and admin
     await checkAdminAccess();
     
+    // Show admin content and hide loading
+    showAdminContent();
+    
     // Load initial data
     await loadPlans();
     await loadDiscountCodes();
@@ -34,14 +37,30 @@ document.addEventListener('DOMContentLoaded', async function() {
     showAlert('Admin dashboard loaded successfully', 'success');
   } catch (error) {
     console.error('Failed to initialize admin dashboard:', error);
-    showAlert('Failed to load admin dashboard: ' + error.message, 'danger');
     
-    // Redirect to login if not authenticated
-    if (error.message.includes('admin')) {
-      window.location.href = '/';
+    // Show access denied page
+    showAccessDenied();
+    
+    // Don't show alert for access denied errors
+    if (!error.message.includes('admin') && !error.message.includes('Access denied')) {
+      showAlert('Failed to load admin dashboard: ' + error.message, 'danger');
     }
   }
 });
+
+// Show admin content
+function showAdminContent() {
+  document.getElementById('admin-loading').style.display = 'none';
+  document.getElementById('admin-access-denied').style.display = 'none';
+  document.getElementById('admin-content').style.display = 'block';
+}
+
+// Show access denied message
+function showAccessDenied() {
+  document.getElementById('admin-loading').style.display = 'none';
+  document.getElementById('admin-content').style.display = 'none';
+  document.getElementById('admin-access-denied').style.display = 'block';
+}
 
 // Wait for auth client to be available
 async function waitForAuthClient() {

@@ -606,6 +606,25 @@ function validateGenerateRequest(body) {
     errors.push(`style must be one of: ${validStyles.join(', ')}`);
   }
   
+  // Validate background removal parameters
+  if (body.removeBackground !== undefined && typeof body.removeBackground !== 'boolean') {
+    errors.push('removeBackground must be a boolean');
+  }
+  
+  if (body.backgroundTolerance !== undefined) {
+    const tol = Number(body.backgroundTolerance);
+    if (isNaN(tol) || tol < 1 || tol > 200) {
+      errors.push('backgroundTolerance must be a number between 1 and 200');
+    }
+  }
+  
+  if (body.backgroundFeather !== undefined) {
+    const feather = Number(body.backgroundFeather);
+    if (isNaN(feather) || feather < 0.5 || feather > 10) {
+      errors.push('backgroundFeather must be a number between 0.5 and 10');
+    }
+  }
+  
   return errors;
 }
 
@@ -780,6 +799,113 @@ async function requireApiKey(req, res, endpoint) {
 // Initialize API key system
 initializeApiKeySystem();
 
+// Background removal function (extracted from handleRemoveBackground)
+async function removeBackgroundFromBuffer(imageBuffer, options = {}) {
+  const {
+    tolerance = 35,
+    hardThreshold = 55,
+    feather = 2.5,
+    despeckle = 1,
+    maxSize = 1024,
+    matteColor = null
+  } = options;
+
+  try {
+    const tolVal = clamp(tolerance, 1, 200);
+    const hardVal = Math.max(tolVal + 1, clamp(hardThreshold, 5, 400));
+    const featherMul = clamp(feather, 0.5, 10);
+    const despeckleRounds = clamp(despeckle, 0, 3);
+    const maxDim = clamp(maxSize, 128, 4096);
+
+    // Normalize to RGBA on a capped canvas
+    const { data, info } = await sharp(imageBuffer)
+      .resize({ width: maxDim, height: maxDim, fit: 'inside', withoutEnlargement: true })
+      .ensureAlpha()
+      .toColorspace('srgb')
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const rgba = new Uint8ClampedArray(data);
+    const w = info.width, h = info.height;
+
+    // Estimate background color from border samples using median
+    const step = Math.max(1, Math.floor(Math.max(w, h) / 256));
+    let samples = getBorderSamples(rgba, w, h, step);
+    if (samples.length > MAX_EDGE_SAMPLES) {
+      samples = samples.filter((_, i) => i % Math.ceil(samples.length / MAX_EDGE_SAMPLES) === 0);
+    }
+    const [br, bg, bb] = medianColor(samples);
+
+    // Build alpha via smoothstep between tol and hard (RGB distance)
+    const tol2 = tolVal * tolVal;
+    const hard2 = hardVal * hardVal;
+    const soft2 = lerp(tol2, hard2, 0.5) * featherMul;
+
+    const alpha = new Uint8ClampedArray(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const d2 = rgbDist2(rgba[i], rgba[i + 1], rgba[i + 2], br, bg, bb);
+        const a = smoothstep(tol2, soft2, d2);
+        alpha[y * w + x] = Math.round(a * 255);
+      }
+    }
+
+    // Despeckle: blur alpha and harden
+    const blur = (src, radius = 1) => {
+      const dst = new Uint8ClampedArray(src.length);
+      const r = Math.max(1, radius | 0);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          let sum = 0, cnt = 0;
+          for (let dy = -r; dy <= r; dy++) {
+            const yy = y + dy; if (yy < 0 || yy >= h) continue;
+            for (let dx = -r; dx <= r; dx++) {
+              const xx = x + dx; if (xx < 0 || xx >= w) continue;
+              sum += src[yy * w + xx]; cnt++;
+            }
+          }
+          dst[y * w + x] = Math.round(sum / cnt);
+        }
+      }
+      return dst;
+    };
+
+    let aWork = alpha;
+    for (let t = 0; t < despeckleRounds; t++) {
+      aWork = blur(aWork, 1);
+      for (let i = 0; i < aWork.length; i++) {
+        const v = aWork[i] / 255;
+        aWork[i] = Math.round(smoothstep(0.35, 0.65, v) * 255);
+      }
+    }
+
+    // Compose output
+    const out = Buffer.alloc(w * h * 4);
+    for (let i = 0, p = 0; i < alpha.length; i++, p += 4) {
+      out[p] = rgba[p];
+      out[p + 1] = rgba[p + 1];
+      out[p + 2] = rgba[p + 2];
+      out[p + 3] = aWork[i];
+    }
+
+    let img = sharp(out, { raw: { width: w, height: h, channels: 4 } });
+    if (matteColor) {
+      const hex = String(matteColor).replace("#", "");
+      if (hex.length === 6) {
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        img = img.flatten({ background: { r, g, b } });
+      }
+    }
+
+    return await img.png().toBuffer();
+  } catch (error) {
+    throw new Error(`Background removal failed: ${error.message}`);
+  }
+}
+
 // Helper function to fetch SVG content
 async function fetchSvgContent(url) {
   try {
@@ -801,11 +927,21 @@ async function fetchSvgContent(url) {
 }
 
 // Helper function to convert generated image to SVG
-async function convertToSvg(imageUrl) {
+async function convertToSvg(imageUrl, options = {}) {
+  const {
+    removeBackground = true, // Default: remove background
+    backgroundTolerance = 35,
+    backgroundFeather = 2.5,
+    backgroundDespeckle = 1
+  } = options;
+
   try {
     console.log(`🔄 Converting generated image to SVG: ${imageUrl}`);
+    if (removeBackground) {
+      console.log(`🎨 Background removal enabled (tolerance: ${backgroundTolerance})`);
+    }
     
-    // First try to vectorize using potrace
+    // Download the image
     const response = await axios.get(imageUrl, {
       responseType: 'arraybuffer',
       timeout: 20000,
@@ -818,9 +954,25 @@ async function convertToSvg(imageUrl) {
       validateStatus: s => s >= 200 && s < 400
     });
 
-    const buf = Buffer.from(response.data);
+    let buf = Buffer.from(response.data);
     if (buf.length > MAX_BYTES) {
       throw new Error('Image too large');
+    }
+
+    // Apply background removal if requested
+    if (removeBackground) {
+      try {
+        console.log(`🧹 Removing background...`);
+        buf = await removeBackgroundFromBuffer(buf, {
+          tolerance: backgroundTolerance,
+          feather: backgroundFeather,
+          despeckle: backgroundDespeckle,
+          maxSize: 512
+        });
+        console.log(`✅ Background removed successfully`);
+      } catch (bgError) {
+        console.log(`⚠️ Background removal failed (${bgError.message}), proceeding without it`);
+      }
     }
 
     // Normalize to paletted PNG for potrace
@@ -1036,6 +1188,11 @@ async function handleIconGenerate(req, res) {
     const colors = body.colors || 'black and white';
     const background = body.background || 'white';
     
+    // Background removal options (default: enabled)
+    const removeBackground = body.removeBackground !== false; // Default true unless explicitly false
+    const backgroundTolerance = body.backgroundTolerance || 35;
+    const backgroundFeather = body.backgroundFeather || 2.5;
+    
     const contextPart = context ? ` for ${context}` : '';
     const prompt = `Design a simple, flat, minimalist icon of a ${subject}${contextPart} ${style} style, ${colors} colors, ${background} background, evenly spaced elements. Maintain geometric balance and consistent stroke width, no text, only icon.`;
     
@@ -1127,8 +1284,12 @@ async function handleIconGenerate(req, res) {
     console.log(`✅ Image generated successfully: ${imageResult.imageURL}`);
     console.log(`🔄 Converting to SVG format...`);
     
-    // Convert generated image to SVG
-    const svgContent = await convertToSvg(imageResult.imageURL);
+    // Convert generated image to SVG with optional background removal
+    const svgContent = await convertToSvg(imageResult.imageURL, {
+      removeBackground,
+      backgroundTolerance,
+      backgroundFeather
+    });
     
     if (!svgContent) {
       console.error(`❌ Failed to convert to SVG`);
@@ -1136,6 +1297,46 @@ async function handleIconGenerate(req, res) {
     }
     
     console.log(`✅ Successfully converted to SVG (${svgContent.length} bytes)`);
+    
+    // Save generated icon to database for display in "Generated Icons" section
+    if (supabase) {
+      try {
+        console.log(`💾 Saving generated icon to database...`);
+        
+        // Create deterministic ID for deduplication
+        const crypto = require('crypto');
+        const iconName = `${subject} ${style} ${colors} ${background}`.trim();
+        const deterministicId = crypto.createHash('sha256')
+          .update(iconName + imageResult.imageURL)
+          .digest('hex');
+        
+        const iconData = {
+          deterministic_id: deterministicId,
+          icon_name: iconName,
+          subject: subject,
+          context: context || '',
+          style: style,
+          colors: colors,
+          background: background,
+          image_url: imageResult.imageURL,
+          user_id: null, // API-generated icons don't have a specific user
+          custom_id: `api_${taskUUID}` // Mark as API-generated
+        };
+        
+        const { error: saveError } = await supabase
+          .from('generated_icons')
+          .insert(iconData)
+          .select();
+        
+        if (saveError) {
+          console.log(`⚠️ Failed to save icon to database:`, saveError.message);
+        } else {
+          console.log(`✅ Icon saved to database successfully`);
+        }
+      } catch (saveErr) {
+        console.log(`⚠️ Database save error:`, saveErr.message);
+      }
+    }
     
     // Build response with SVG content for MCP usage
     const response = {

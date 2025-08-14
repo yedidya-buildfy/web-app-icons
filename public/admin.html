@@ -164,7 +164,19 @@
 </style>
 </head>
 <body>
-  <div class="admin-container">
+  <!-- Loading/Error State -->
+  <div id="admin-loading" class="admin-container" style="text-align: center; padding: 100px 20px;">
+    <h2>Loading Admin Dashboard...</h2>
+    <p>Verifying admin privileges...</p>
+  </div>
+
+  <div id="admin-access-denied" class="admin-container" style="display: none; text-align: center; padding: 100px 20px;">
+    <h2>Access Denied</h2>
+    <p>You do not have admin privileges to access this page.</p>
+    <a href="/" class="btn btn-primary">Return to Home</a>
+  </div>
+
+  <div id="admin-content" class="admin-container" style="display: none;">
     <nav class="app-nav">
       <a href="/" class="nav-link">Icon Search</a>
       <a href="/generate.html" class="nav-link">Icon Generator</a>
@@ -525,7 +537,7 @@
         </div>
       </div>
     </div>
-  </div>
+  </div> <!-- End admin-content -->
 
   <div id="alerts-container"></div>
 
