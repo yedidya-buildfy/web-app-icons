@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Icon MCP Authentication</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            max-width: 480px;
+            width: 90%;
+            text-align: center;
+        }
+        h1 { 
+            color: #4a5568; 
+            margin-bottom: 0.5rem; 
+            font-size: 1.8rem;
+        }
+        .subtitle {
+            color: #718096;
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+        }
+        .status {
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            font-weight: 500;
+        }
+        .status.waiting {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .form-group {
+            margin: 1rem 0;
+            text-align: left;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #4a5568;
+        }
+        input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            padding: 0.875rem 2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin: 0.5rem;
+        }
+        button:hover { background: #5a67d8; }
+        button:disabled { 
+            background: #a0aec0; 
+            cursor: not-allowed; 
+        }
+        .plans {
+            text-align: left;
+            margin: 2rem 0;
+        }
+        .plan {
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .plan:hover, .plan.selected {
+            border-color: #667eea;
+            background: #f7fafc;
+        }
+        .plan h3 {
+            color: #4a5568;
+            margin-bottom: 0.5rem;
+        }
+        .plan .price {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 0.5rem;
+        }
+        .plan .features {
+            font-size: 0.9rem;
+            color: #718096;
+        }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .session-info {
+            background: #f7fafc;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #4a5568;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Icon MCP</h1>
+        <p class="subtitle">Authenticate to access premium icon search and AI generation</p>
+        
+        <div id="session-info" class="session-info" style="display: none;">
+            <strong>Session:</strong> <span id="session-id"></span>
+        </div>
+
+        <div id="status" class="status waiting">
+            <div class="spinner"></div> Initializing authentication...
+        </div>
+
+        <!-- Login Form -->
+        <div id="login-form" style="display: none;">
+            <form onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label>Email:</label>
+                    <input type="email" id="email" required placeholder="your@email.com">
+                </div>
+                <div class="form-group">
+                    <label>Password:</label>
+                    <input type="password" id="password" required placeholder="Your password">
+                </div>
+                <button type="submit" id="login-btn">Login</button>
+                <button type="button" onclick="showRegistration()">Create Account</button>
+            </form>
+        </div>
+
+        <!-- Registration Form -->
+        <div id="register-form" style="display: none;">
+            <form onsubmit="handleRegistration(event)">
+                <div class="form-group">
+                    <label>Email:</label>
+                    <input type="email" id="reg-email" required placeholder="your@email.com">
+                </div>
+                <div class="form-group">
+                    <label>Name:</label>
+                    <input type="text" id="reg-name" required placeholder="Your full name">
+                </div>
+                <div class="form-group">
+                    <label>Password:</label>
+                    <input type="password" id="reg-password" required placeholder="Choose a password">
+                </div>
+                <button type="submit" id="register-btn">Create Account</button>
+                <button type="button" onclick="showLogin()">Back to Login</button>
+            </form>
+        </div>
+
+        <!-- Plan Selection -->
+        <div id="plan-selection" style="display: none;">
+            <h3>Choose Your Plan</h3>
+            <div class="plans">
+                <div class="plan" data-plan="free" onclick="selectPlan('free')">
+                    <h3>🆓 Free</h3>
+                    <div class="price">$0/month</div>
+                    <div class="features">100 searches/month • SVG downloads</div>
+                </div>
+                <div class="plan" data-plan="pro" onclick="selectPlan('pro')">
+                    <h3>🚀 Pro</h3>
+                    <div class="price">$9/month</div>
+                    <div class="features">Unlimited searches • AI generation • All formats</div>
+                </div>
+                <div class="plan" data-plan="enterprise" onclick="selectPlan('enterprise')">
+                    <h3>🏢 Enterprise</h3>
+                    <div class="price">$29/month</div>
+                    <div class="features">Everything unlimited • API access • Premium support</div>
+                </div>
+            </div>
+            <button onclick="confirmPlan()" id="confirm-plan" disabled>Select Plan</button>
+        </div>
+
+        <!-- Success -->
+        <div id="success" style="display: none;">
+            <div class="status success">
+                ✅ Authentication successful! Your API key has been saved to your MCP client.
+            </div>
+            <p>You can now close this window and return to your AI assistant.</p>
+            <div class="session-info">
+                <strong>API Key:</strong> <code id="api-key-display"></code>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let sessionId = null;
+        let selectedPlan = null;
+        let currentUser = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            sessionId = urlParams.get('session');
+            
+            if (sessionId) {
+                document.getElementById('session-id').textContent = sessionId;
+                document.getElementById('session-info').style.display = 'block';
+            }
+
+            setTimeout(() => {
+                document.getElementById('status').style.display = 'none';
+                showLogin();
+            }, 1500);
+        });
+
+        function showLogin() {
+            document.getElementById('register-form').style.display = 'none';
+            document.getElementById('plan-selection').style.display = 'none';
+            document.getElementById('login-form').style.display = 'block';
+        }
+
+        function showRegistration() {
+            document.getElementById('login-form').style.display = 'none';
+            document.getElementById('register-form').style.display = 'block';
+        }
+
+        function showPlanSelection() {
+            document.getElementById('login-form').style.display = 'none';
+            document.getElementById('register-form').style.display = 'none';
+            document.getElementById('plan-selection').style.display = 'block';
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            document.getElementById('login-btn').disabled = true;
+            document.getElementById('login-btn').innerHTML = '<div class="spinner"></div> Logging in...';
+
+            try {
+                // Mock login - replace with actual API call
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                currentUser = { email, name: 'User' };
+                showPlanSelection();
+            } catch (error) {
+                alert('Login failed: ' + error.message);
+            } finally {
+                document.getElementById('login-btn').disabled = false;
+                document.getElementById('login-btn').textContent = 'Login';
+            }
+        }
+
+        async function handleRegistration(event) {
+            event.preventDefault();
+            const email = document.getElementById('reg-email').value;
+            const name = document.getElementById('reg-name').value;
+            const password = document.getElementById('reg-password').value;
+            
+            document.getElementById('register-btn').disabled = true;
+            document.getElementById('register-btn').innerHTML = '<div class="spinner"></div> Creating account...';
+
+            try {
+                // Mock registration - replace with actual API call
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                currentUser = { email, name };
+                showPlanSelection();
+            } catch (error) {
+                alert('Registration failed: ' + error.message);
+            } finally {
+                document.getElementById('register-btn').disabled = false;
+                document.getElementById('register-btn').textContent = 'Create Account';
+            }
+        }
+
+        function selectPlan(plan) {
+            // Remove previous selections
+            document.querySelectorAll('.plan').forEach(p => p.classList.remove('selected'));
+            // Add selection to clicked plan
+            document.querySelector(`[data-plan="${plan}"]`).classList.add('selected');
+            selectedPlan = plan;
+            document.getElementById('confirm-plan').disabled = false;
+        }
+
+        async function confirmPlan() {
+            if (!selectedPlan) return;
+
+            document.getElementById('confirm-plan').disabled = true;
+            document.getElementById('confirm-plan').innerHTML = '<div class="spinner"></div> Setting up...';
+
+            try {
+                // Mock API key generation - replace with actual API call
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                const apiKey = 'ak_mcp_' + Math.random().toString(36).substring(2, 15);
+                
+                // Show success
+                document.getElementById('plan-selection').style.display = 'none';
+                document.getElementById('success').style.display = 'block';
+                document.getElementById('api-key-display').textContent = apiKey;
+
+                // In a real implementation, you would:
+                // 1. Create the API key in your database
+                // 2. Optionally store the session to allow MCP client to poll for completion
+                // 3. Set up the subscription if not free plan
+
+            } catch (error) {
+                alert('Setup failed: ' + error.message);
+            } finally {
+                document.getElementById('confirm-plan').disabled = false;
+                document.getElementById('confirm-plan').textContent = 'Select Plan';
+            }
+        }
+    </script>
+</body>
+</html>

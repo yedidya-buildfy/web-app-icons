@@ -1767,6 +1767,124 @@ async function handleGenerate(req, res) {
   }
 }
 
+// MCP Authentication Handlers
+async function handleMcpAuth(req, res) {
+  setSecurityHeaders(res);
+  
+  if (req.method === 'GET') {
+    // Serve the MCP authentication page
+    const fs = require('fs');
+    const path = require('path');
+    
+    try {
+      const htmlPath = path.join(__dirname, 'auth-mcp.html');
+      const html = fs.readFileSync(htmlPath, 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+    } catch (error) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('MCP auth page not found');
+    }
+    return;
+  }
+  
+  if (req.method === 'POST') {
+    // Handle authentication completion
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    
+    req.on('end', async () => {
+      try {
+        const { action, email, password, name, plan, sessionId } = JSON.parse(body);
+        
+        if (action === 'login') {
+          // Mock login - in real app, verify credentials
+          const apiKey = `ak_mcp_${Date.now().toString(36)}${Math.random().toString(36)}`;
+          
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: true,
+            apiKey,
+            user: { email, plan: plan || 'free' }
+          }));
+        } else if (action === 'register') {
+          // Mock registration - in real app, create user account
+          const apiKey = `ak_mcp_${Date.now().toString(36)}${Math.random().toString(36)}`;
+          
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: true,
+            apiKey,
+            user: { email, name, plan: plan || 'free' }
+          }));
+        } else {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid action' }));
+        }
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid request body' }));
+      }
+    });
+    return;
+  }
+  
+  res.writeHead(405, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: 'Method not allowed' }));
+}
+
+async function handleMcpSessionStatus(req, res) {
+  setSecurityHeaders(res);
+  
+  const urlParams = new URL(req.url, `http://${req.headers.host}`);
+  const sessionId = urlParams.searchParams.get('session');
+  
+  if (!sessionId) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Session ID required' }));
+    return;
+  }
+  
+  // In real implementation, check session status in database
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({
+    status: 'pending',
+    sessionId
+  }));
+}
+
+async function handleMcpAuthComplete(req, res) {
+  setSecurityHeaders(res);
+  
+  let body = '';
+  req.on('data', chunk => {
+    body += chunk.toString();
+  });
+  
+  req.on('end', async () => {
+    try {
+      const { sessionId, apiKey } = JSON.parse(body);
+      
+      if (!sessionId || !apiKey) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Session ID and API key required' }));
+        return;
+      }
+      
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        success: true,
+        message: 'Authentication completed' 
+      }));
+    } catch (error) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid request body' }));
+    }
+  });
+}
+
 const server = http.createServer((req, res) => {
   const pathname = req.url.split('?')[0];
 
@@ -1888,6 +2006,19 @@ const server = http.createServer((req, res) => {
     const userId = requireAuthentication(req, res);
     if (!userId) return;
     return handleRemoveBackground(req, res);
+  }
+
+  // MCP Authentication endpoints  
+  if (pathname === '/auth/mcp') {
+    return handleMcpAuth(req, res);
+  }
+
+  if (pathname === '/api/auth/mcp-session') {
+    return handleMcpSessionStatus(req, res);
+  }
+
+  if (pathname === '/api/auth/mcp-complete') {
+    return handleMcpAuthComplete(req, res);
   }
 
   if (req.method !== 'GET') {
