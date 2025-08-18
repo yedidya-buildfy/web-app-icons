@@ -2,14 +2,18 @@
   "version": 2,
   "name": "aicon-api",
   "functions": {
-    "api/**/*.js": {
+    "server.js": {
       "maxDuration": 30
     }
   },
   "rewrites": [
     {
-      "source": "/",
-      "destination": "/public/index.html"
+      "source": "/api/(.*)",
+      "destination": "/server.js"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/server.js"
     }
   ]
 }

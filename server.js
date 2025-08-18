@@ -542,6 +542,12 @@ function getClientInfo(req) {
 }
 
 function requireAuthentication(req, res) {
+  // Dev mode bypass for testing
+  if (process.env.DEV_MODE === 'true') {
+    console.log('DEV MODE: Bypassing authentication');
+    return 'dev-user-id';
+  }
+  
   const userId = extractUserFromAuthHeader(req);
   if (!userId) {
     setSecurityHeaders(res);
@@ -645,6 +651,24 @@ function initializeApiKeySystem() {
 }
 
 async function validateApiKey(req) {
+  // Dev mode bypass for testing
+  if (process.env.DEV_MODE === 'true') {
+    console.log('DEV MODE: Bypassing API key validation');
+    return { 
+      valid: true, 
+      keyInfo: {
+        permissions: {
+          canSearch: true,
+          canGenerate: true,
+          canDownload: true
+        },
+        name: 'Dev Mode Key',
+        ownerEmail: 'dev@test.com'
+      },
+      apiKeyId: 'dev-api-key-id'
+    };
+  }
+
   if (!supabase) {
     return { valid: false, error: 'Server configuration error: Database unavailable' };
   }
