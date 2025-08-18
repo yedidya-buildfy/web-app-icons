@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "vercel-build": "echo 'No build step required'"
+    "vercel-build": "echo 'No build step required'",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "keywords": [
     "icon-search",
@@ -25,5 +28,12 @@
     "bcrypt": "^6.0.0",
     "potrace": "^2.1.8",
     "sharp": "^0.34.3"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^6.3.4",
+    "nock": "^13.5.4",
+    "@types/jest": "^29.5.12",
+    "@types/supertest": "^6.0.2"
   }
 }
